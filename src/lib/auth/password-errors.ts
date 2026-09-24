@@ -7,7 +7,7 @@ export const MIN_PASSWORD_LENGTH = 8;
 
 export function describeSignInError(error: AuthErrorLike): string {
   if (error?.code === "email_not_confirmed") {
-    return "This account's email address has not been confirmed yet. Use the confirmation email sent at sign-up, then sign in.";
+    return "This account has not been activated yet. Ask an administrator to confirm it in Supabase.";
   }
   if (error?.code === "invalid_credentials" || /invalid login credentials/i.test(error?.message ?? "")) {
     return "Incorrect email or password.";

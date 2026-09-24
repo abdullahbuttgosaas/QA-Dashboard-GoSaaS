@@ -8,7 +8,7 @@ describe("describeSignInError", () => {
     );
   });
   it("explains unconfirmed accounts", () => {
-    expect(describeSignInError({ status: 400, code: "email_not_confirmed", message: "Email not confirmed" })).toMatch(/not been confirmed/);
+    expect(describeSignInError({ status: 400, code: "email_not_confirmed", message: "Email not confirmed" })).toMatch(/not been activated/);
   });
   it("explains rate limiting", () => {
     expect(describeSignInError({ status: 429, code: "over_request_rate_limit" })).toMatch(/Too many/);

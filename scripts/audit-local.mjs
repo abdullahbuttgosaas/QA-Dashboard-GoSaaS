@@ -112,8 +112,7 @@ const get = (path, cookie) => fetch(APP + path, { redirect: "manual", headers: c
   check("domain", "login page available", form.status === 200);
   const lookalike = await a.auth.signUp({ email: "outsider@gosaas.ai.evil.com", password: "A-long-password-123!" });
   check("domain", "look-alike domain signup rejected", !!lookalike.error, lookalike.error?.message);
-  const cb = await get("/auth/callback");
-  check("auth", "confirmation landing sends user to sign in", cb.status === 307 && (cb.headers.get("location") ?? "").includes("/login?confirmed=1"));
+  check("auth", "no confirmation/magic-link landing route", (await get("/auth/callback?code=x")).status === 404);
 }
 
 // ---------------------------------------------------------------------------
@@ -131,11 +130,11 @@ const get = (path, cookie) => fetch(APP + path, { redirect: "manual", headers: c
   check("auth", "@gosaas.ai self sign-up creates the account", !su.error && !!su.data.user, su.error?.message);
   const newProfile = await admin.from("profiles").select("public_slug").eq("id", su.data.user?.id ?? "");
   check("auth", "profile created for new user", newProfile.data?.[0]?.public_slug === "new", JSON.stringify(newProfile.data));
-  const early = await a.auth.signInWithPassword({ email: "new.member@gosaas.ai", password: pw });
-  check("auth", "unconfirmed account cannot sign in (confirmation on)", early.error?.code === "email_not_confirmed", early.error?.code);
-  check("auth", "no session issued before confirmation", !su.data.session);
-  const weak = await a.auth.signUp({ email: "weak.pw@gosaas.ai", password: "123" });
-  check("auth", "too-short password rejected by Supabase", !!weak.error, weak.error?.code);
+  check("auth", "sign-up signs in immediately (no confirmation email)", !!su.data.session && !!su.data.user?.email_confirmed_at);
+  const again = await a.auth.signInWithPassword({ email: "new.member@gosaas.ai", password: pw });
+  check("auth", "new user can sign in with password", !again.error, again.error?.code);
+  const weak = await a.auth.signUp({ email: "weak.pw@gosaas.ai", password: "Seven77" });
+  check("auth", "7-character password rejected by Supabase (minimum 8)", weak.error?.code === "weak_password", weak.error?.code);
 }
 
 // ---------------------------------------------------------------------------

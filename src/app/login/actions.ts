@@ -1,13 +1,12 @@
 "use server";
 
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { serverEnv } from "@/lib/env";
 import { isAllowedEmail } from "@/lib/auth/domain";
 import { describeSignInError, describeSignUpError, validateNewPassword } from "@/lib/auth/password-errors";
-import { safeNextPath, siteOrigin } from "@/lib/site";
+import { safeNextPath } from "@/lib/site";
 
 export type AuthFormState = { error?: string; notice?: string; email?: string };
 
@@ -42,21 +41,10 @@ export async function signUp(_prev: AuthFormState, form: FormData): Promise<Auth
   if (invalid) return { error: invalid, email: parsed.email };
 
   const supabase = await createClient();
-  const { data, error } = await supabase.auth.signUp({
-    email: parsed.email,
-    password,
-    // Only used when email confirmation is enabled: where the confirmation link lands.
-    options: { emailRedirectTo: `${siteOrigin(await headers())}/auth/callback` },
-  });
+  // Email confirmation is disabled (accounts are admin-managed), so Supabase signs the new user in immediately.
+  // Temporary: public sign-up will be removed once the app is validated.
+  const { data, error } = await supabase.auth.signUp({ email: parsed.email, password });
   if (error) return { error: describeSignUpError(error), email: parsed.email };
-
-  // With confirmation disabled Supabase returns a session immediately; the profile is created by the DB trigger.
   if (data.session) redirect("/");
-
-  // With confirmation enabled no session exists yet. (Supabase also returns this shape for an already-registered
-  // email, without saying so, to avoid revealing which accounts exist.)
-  return {
-    email: parsed.email,
-    notice: "Account created. Confirm your email address using the link we sent, then sign in with your password.",
-  };
+  return { email: parsed.email, notice: "Account created. Sign in with your password." };
 }

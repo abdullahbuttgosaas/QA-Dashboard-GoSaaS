@@ -34,8 +34,8 @@ function EmailField({ domain, defaultValue }: { domain: string; defaultValue?: s
   );
 }
 
-export function SignInForm({ next, domain, notice }: { next?: string; domain: string; notice?: string }) {
-  const [state, action, pending] = useActionState<AuthFormState, FormData>(signIn, { notice });
+export function SignInForm({ next, domain }: { next?: string; domain: string }) {
+  const [state, action, pending] = useActionState<AuthFormState, FormData>(signIn, {});
   return (
     <form action={action} className="space-y-4">
       <input type="hidden" name="next" value={next ?? ""} />

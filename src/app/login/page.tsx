@@ -12,7 +12,6 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const next = safeNextPath(typeof sp.next === "string" ? sp.next : null) ?? undefined;
   if ((await getViewer())?.isQaUser) redirect(next ?? "/");
   const signup = sp.mode === "signup";
-  const notice = sp.confirmed === "1" ? "Email confirmed. Sign in with your password." : undefined;
 
   return (
     <main className="flex flex-1 items-center justify-center px-4 py-16">
@@ -32,7 +31,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           {signup ? (
             <SignUpForm domain={serverEnv.allowedEmailDomain()} />
           ) : (
-            <SignInForm key={notice ?? "signin"} next={next} domain={serverEnv.allowedEmailDomain()} notice={notice} />
+            <SignInForm next={next} domain={serverEnv.allowedEmailDomain()} />
           )}
         </div>
       </div>

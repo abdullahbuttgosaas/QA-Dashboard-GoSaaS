@@ -63,8 +63,7 @@ Useful scripts:
 | `npm run db:types` | Regenerate `src/types/database.ts` from the local DB |
 | `npm run typecheck` / `npm run lint` | Static checks |
 
-QA users sign in with email + password (Supabase Auth). Create a local account at `/login?mode=signup`; the
-confirmation email arrives in Mailpit at http://127.0.0.1:54324.
+QA users sign in with email + password (Supabase Auth). Create a local account at `/login?mode=signup`.
 
 ## Database changes
 
@@ -92,13 +91,13 @@ Environment variables (Project → Settings → Environment Variables):
 | `ALLOWED_EMAIL_DOMAIN` | `gosaas.ai` |
 | `NEXT_PUBLIC_SITE_URL` | Production URL |
 
-Supabase dashboard → Authentication:
+Supabase Authentication (hosted):
 
-- **URL Configuration:** Site URL = production URL; Redirect URLs include `https://<prod-domain>/auth/callback`
-  (and `https://*-<team>.vercel.app/auth/callback` for previews).
-- **Hooks:** enable *Before User Created* → Postgres function `public.hook_before_user_created`.
-- **Email:** sign-in sends no email. Only sign-up confirmation does (built-in sender: ~2 emails/hour per project,
-  delivered only to members of the Supabase organization).
+- **Users:** QA accounts are created by an admin in **Authentication → Users → Add user** (email + password).
+  Only `@gosaas.ai` addresses are accepted (auth hook + database trigger).
+- **Email confirmation:** off; minimum password length: 8. Sign-in and sign-up send no email.
+- **Hooks:** *Before User Created* → `public.hook_before_user_created`.
+- The in-app sign-up form (`/login?mode=signup`) is temporary and will be removed after validation.
 
 ## Project layout
 
