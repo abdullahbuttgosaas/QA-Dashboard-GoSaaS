@@ -44,3 +44,7 @@ next-env.d.ts
 # supabase
 supabase/.branches
 supabase/.temp
+
+# real QA reports used for local testing (client data; not committed)
+src/test/CHG*.docx
+src/test/CHG*.pdf

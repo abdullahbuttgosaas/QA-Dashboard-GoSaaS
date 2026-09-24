@@ -226,7 +226,7 @@ export function RecordEditor({ initial, submitLabel, onSubmit, cancelHref, notes
         addLabel="Test case"
         itemTitle={(t, i) => (
           <span className="flex items-center gap-3">
-            <span className="w-14 shrink-0 font-mono text-xs text-ink-muted">{t.ref || `#${i + 1}`}</span>
+            <span className="max-w-[9rem] shrink-0 truncate font-mono text-xs text-ink-muted">{t.ref || `#${i + 1}`}</span>
             <span className="truncate text-ink">{t.title || "Untitled test case"}</span>
             <OutcomeBadge value={t.status} />
           </span>
@@ -259,7 +259,7 @@ export function RecordEditor({ initial, submitLabel, onSubmit, cancelHref, notes
         addLabel="Bug"
         itemTitle={(b, i) => (
           <span className="flex items-center gap-3">
-            <span className="w-14 shrink-0 font-mono text-xs text-ink-muted">{b.ref || `#${i + 1}`}</span>
+            <span className="max-w-[9rem] shrink-0 truncate font-mono text-xs text-ink-muted">{b.ref || `#${i + 1}`}</span>
             <span className="truncate text-ink">{b.title || "Untitled bug"}</span>
             <SeverityBadge severity={b.severity} />
           </span>
@@ -302,7 +302,7 @@ export function RecordEditor({ initial, submitLabel, onSubmit, cancelHref, notes
         addLabel="Retest"
         itemTitle={(r, i) => (
           <span className="flex items-center gap-3">
-            <span className="w-14 shrink-0 font-mono text-xs text-ink-muted">#{i + 1}</span>
+            <span className="max-w-[9rem] shrink-0 truncate font-mono text-xs text-ink-muted">#{i + 1}</span>
             <span className="truncate text-ink-secondary">
               {[r.bug_ref, r.test_case_ref].filter(Boolean).join(" · ") || "Retest"}
             </span>
@@ -333,7 +333,7 @@ export function RecordEditor({ initial, submitLabel, onSubmit, cancelHref, notes
         addLabel="Requirement"
         itemTitle={(r, i) => (
           <span className="flex items-center gap-3">
-            <span className="w-14 shrink-0 font-mono text-xs text-ink-muted">{r.ref || `#${i + 1}`}</span>
+            <span className="max-w-[9rem] shrink-0 truncate font-mono text-xs text-ink-muted">{r.ref || `#${i + 1}`}</span>
             <span className="truncate text-ink">{r.text || "Empty requirement"}</span>
           </span>
         )}

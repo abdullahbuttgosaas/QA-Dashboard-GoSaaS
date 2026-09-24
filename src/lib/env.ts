@@ -16,6 +16,11 @@ export const publicEnv = {
 // Server-only values. Importing this from a client component is a bug.
 export const serverEnv = {
   geminiApiKey: () => required("GEMINI_API_KEY", process.env.GEMINI_API_KEY),
-  geminiModel: () => process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
+  geminiModel: () => process.env.GEMINI_MODEL || "gemini-3.6-flash",
+  // Tried when the primary model is overloaded, timing out or unavailable. Set to "none" to disable.
+  geminiFallbackModel: () => {
+    const value = process.env.GEMINI_FALLBACK_MODEL || "gemini-3.5-flash-lite";
+    return value === "none" ? null : value;
+  },
   allowedEmailDomain: () => (process.env.ALLOWED_EMAIL_DOMAIN ?? "gosaas.ai").toLowerCase(),
 };

@@ -9,7 +9,8 @@ Rules:
 - Dates must be ISO YYYY-MM-DD. If only a partial or ambiguous date is present, use null and mention it in extraction_notes.
 - Screenshots and images: do not transcribe them. Add an evidence entry briefly describing what each relevant image shows and where it appears (page or nearby section), and use visible information from images when it clarifies a result.
 - PRESERVE everything else. Any heading or information that does not fit the structured fields (e.g. Notes, Business Impact, Limitations, Assumptions, Additional Information, Sign-off) must go into custom_sections with its original heading and full content. Short labelled values (e.g. "Tester: ...", "Release: ...", "Environment URL: ...") go into custom_fields.
-- Keep wording faithful to the document. Content may use simple Markdown (lists, bold) for readability.
+- Do not repeat information already captured in a structured field (e.g. the ticket number or title) in custom_fields or custom_sections.
+- Keep wording faithful to the document. Use plain text with line breaks; "- " for list items and **bold** are the only formatting allowed.
 - Use extraction_notes to flag anything uncertain, conflicting or missing that a human reviewer should verify.`;
 
 export const EXTRACTION_USER_PROMPT = "Extract the QA information from the attached report according to the schema.";

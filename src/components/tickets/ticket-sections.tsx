@@ -4,8 +4,22 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { formatDate } from "@/lib/format";
 import type { QaData } from "@/types/qa";
 
+// Plain text with **bold** support only. Rendered as React nodes (never raw HTML), so report content cannot inject markup.
 function Prose({ children }: { children: string }) {
-  return <div className="text-sm leading-relaxed whitespace-pre-wrap text-ink-secondary">{children}</div>;
+  const parts = children.split(/(\*\*[^*\n]+\*\*)/g);
+  return (
+    <div className="text-sm leading-relaxed whitespace-pre-wrap text-ink-secondary">
+      {parts.map((part, i) =>
+        /^\*\*[^*\n]+\*\*$/.test(part) ? (
+          <strong key={i} className="font-semibold text-ink">
+            {part.slice(2, -2)}
+          </strong>
+        ) : (
+          part
+        ),
+      )}
+    </div>
+  );
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -50,7 +64,7 @@ export function RequirementsSection({ data }: { data: QaData }) {
       <ul className="divide-y divide-line">
         {data.requirements.map((r, i) => (
           <li key={i} className="flex gap-4 px-5 py-3 text-sm">
-            <span className="w-20 shrink-0 font-mono text-xs text-ink-muted">{r.ref || `#${i + 1}`}</span>
+            <span className="max-w-[10rem] shrink-0 truncate font-mono text-xs text-ink-muted">{r.ref || `#${i + 1}`}</span>
             <span className="whitespace-pre-wrap text-ink-secondary">{r.text}</span>
           </li>
         ))}
@@ -75,7 +89,7 @@ export function TestCasesSection({ data }: { data: QaData }) {
                   <span aria-hidden className="text-xs text-ink-muted transition-transform group-open:rotate-90">
                     ▶
                   </span>
-                  <span className="w-16 shrink-0 font-mono text-xs text-ink-muted">{tc.ref || `#${i + 1}`}</span>
+                  <span className="max-w-[9rem] shrink-0 truncate font-mono text-xs text-ink-muted">{tc.ref || `#${i + 1}`}</span>
                   <span className="min-w-0 flex-1 truncate text-sm text-ink">{tc.title || "Untitled test case"}</span>
                   <OutcomeBadge value={tc.status} />
                 </summary>

@@ -84,7 +84,8 @@ Environment variables (Project → Settings → Environment Variables):
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://<ref>.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Publishable key (browser-safe) |
 | `GEMINI_API_KEY` | Server only |
-| `GEMINI_MODEL` | Optional, default `gemini-2.5-flash` |
+| `GEMINI_MODEL` | Optional, default `gemini-3.6-flash` |
+| `GEMINI_FALLBACK_MODEL` | Optional, default `gemini-3.5-flash-lite`; used when the primary is overloaded |
 | `ALLOWED_EMAIL_DOMAIN` | `gosaas.ai` |
 | `NEXT_PUBLIC_SITE_URL` | Production URL |
 
