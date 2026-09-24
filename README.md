@@ -34,6 +34,7 @@ Hiding buttons is not the boundary; the database is.
 
 - `anon` (managers): `SELECT` only, only rows of public profiles, no `email`, no raw AI extraction,
   only confirmed documents. No insert/update/delete grants at all.
+- QA authentication: Supabase Auth email + password (`signUp`, `signInWithPassword`, `signOut`).
 - `authenticated`: writes only rows they own (`owner_id = auth.uid()`) and only with a `@gosaas.ai` JWT.
 - Signups from other domains are rejected in the database (trigger on `auth.users`) and by the
   Supabase "Before User Created" hook, in addition to the login form check.
@@ -62,7 +63,8 @@ Useful scripts:
 | `npm run db:types` | Regenerate `src/types/database.ts` from the local DB |
 | `npm run typecheck` / `npm run lint` | Static checks |
 
-Local magic-link emails arrive in Mailpit at http://127.0.0.1:54324.
+QA users sign in with email + password (Supabase Auth). Create a local account at `/login?mode=signup`; the
+confirmation email arrives in Mailpit at http://127.0.0.1:54324.
 
 ## Database changes
 
@@ -95,7 +97,8 @@ Supabase dashboard → Authentication:
 - **URL Configuration:** Site URL = production URL; Redirect URLs include `https://<prod-domain>/auth/callback`
   (and `https://*-<team>.vercel.app/auth/callback` for previews).
 - **Hooks:** enable *Before User Created* → Postgres function `public.hook_before_user_created`.
-- **SMTP:** configure a custom SMTP sender; Supabase's built-in sender is heavily rate-limited.
+- **Email:** sign-in sends no email. Only sign-up confirmation does (built-in sender: ~2 emails/hour per project,
+  delivered only to members of the Supabase organization).
 
 ## Project layout
 

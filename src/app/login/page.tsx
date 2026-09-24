@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { getViewer } from "@/lib/auth/viewer";
 import { serverEnv } from "@/lib/env";
 import { safeNextPath } from "@/lib/site";
-import { LoginForm } from "./login-form";
+import { SignInForm, SignUpForm } from "./login-form";
 
 export const metadata: Metadata = { title: "Sign in" };
 
@@ -11,6 +11,8 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const sp = await searchParams;
   const next = safeNextPath(typeof sp.next === "string" ? sp.next : null) ?? undefined;
   if ((await getViewer())?.isQaUser) redirect(next ?? "/");
+  const signup = sp.mode === "signup";
+  const notice = sp.confirmed === "1" ? "Email confirmed. Sign in with your password." : undefined;
 
   return (
     <main className="flex flex-1 items-center justify-center px-4 py-16">
@@ -22,12 +24,16 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           <span className="text-base font-semibold text-ink">Glaukos QA Dashboard</span>
         </div>
         <div className="rounded-lg border border-line bg-surface p-6">
-          <h1 className="text-lg font-semibold text-ink">QA sign in</h1>
+          <h1 className="text-lg font-semibold text-ink">{signup ? "Create QA account" : "QA sign in"}</h1>
           <p className="mt-1 mb-5 text-sm text-ink-muted">
-            For QA team members with a @{serverEnv.allowedEmailDomain()} account. We&apos;ll email you a one-time code. Managers can view
-            dashboards through their shared link without signing in.
+            For QA team members with a @{serverEnv.allowedEmailDomain()} account. Managers can view dashboards through their shared link
+            without signing in.
           </p>
-          <LoginForm next={next} domain={serverEnv.allowedEmailDomain()} />
+          {signup ? (
+            <SignUpForm domain={serverEnv.allowedEmailDomain()} />
+          ) : (
+            <SignInForm key={notice ?? "signin"} next={next} domain={serverEnv.allowedEmailDomain()} notice={notice} />
+          )}
         </div>
       </div>
     </main>

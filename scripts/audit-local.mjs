@@ -32,15 +32,23 @@ const denied = (r) => !!r.error || (Array.isArray(r.data) && r.data.length === 0
 const anon = () => createClient(URL_, PUBLISHABLE, { auth: { persistSession: false } });
 const admin = createClient(URL_, SECRET, { auth: { persistSession: false } });
 
-// Signs in through the same email-OTP verification the login page uses (code, not link),
-// using an admin-generated code so no email is sent.
+// Signs in exactly like the login page (email + password). Local test passwords are random per run.
+const passwords = new Map();
 async function sessionFor(email) {
-  const { data, error } = await admin.auth.admin.generateLink({ type: "magiclink", email });
-  if (error) throw error;
+  if (!passwords.has(email)) {
+    const password = `Audit-${crypto.randomUUID()}`;
+    const { data: list } = await admin.auth.admin.listUsers();
+    const user = list.users.find((u) => u.email === email);
+    const res = user
+      ? await admin.auth.admin.updateUserById(user.id, { password })
+      : await admin.auth.admin.createUser({ email, password, email_confirm: true });
+    if (res.error) throw res.error;
+    passwords.set(email, password);
+  }
   const client = anon();
-  const { data: s, error: e2 } = await client.auth.verifyOtp({ email, token: data.properties.email_otp, type: "email" });
-  if (e2) throw e2;
-  return { client, session: s.session };
+  const { data, error } = await client.auth.signInWithPassword({ email, password: passwords.get(email) });
+  if (error) throw error;
+  return { client, session: data.session };
 }
 
 // Build the exact auth cookies @supabase/ssr would set, so HTTP requests act as that user.
@@ -93,25 +101,49 @@ const get = (path, cookie) => fetch(APP + path, { redirect: "manual", headers: c
 {
   const a = anon();
   const otp = await a.auth.signInWithOtp({ email: "outsider@gmail.com" });
-  check("domain", "magic link rejected for other domain", !!otp.error, otp.error?.message);
+  check("domain", "Supabase email endpoint rejects other domain (unused by app)", !!otp.error, otp.error?.message);
   const su = await a.auth.signUp({ email: "outsider@gmail.com", password: "A-long-password-123!" });
   check("domain", "password signup rejected for other domain", !!su.error, su.error?.message);
   const tricky = await a.auth.signInWithOtp({ email: "outsider@gosaas.ai.evil.com" });
-  check("domain", "look-alike domain rejected", !!tricky.error, tricky.error?.message);
+  check("domain", "look-alike domain rejected by email endpoint", !!tricky.error, tricky.error?.message);
   const adm = await admin.auth.admin.createUser({ email: "outsider2@gmail.com", email_confirm: true });
   check("domain", "even admin-created outsider rejected (DB trigger)", !!adm.error, adm.error?.message);
   const form = await fetch(`${APP}/login`, { method: "GET" });
   check("domain", "login page available", form.status === 200);
-  check("auth", "magic-link callback route removed", (await get("/auth/callback?code=x")).status === 404);
-  const wrong = await anon().auth.verifyOtp({ email: "abdullah.butt@gosaas.ai", token: "00000000", type: "email" });
-  check("auth", "wrong OTP code rejected", !!wrong.error);
+  const lookalike = await a.auth.signUp({ email: "outsider@gosaas.ai.evil.com", password: "A-long-password-123!" });
+  check("domain", "look-alike domain signup rejected", !!lookalike.error, lookalike.error?.message);
+  const cb = await get("/auth/callback");
+  check("auth", "confirmation landing sends user to sign in", cb.status === 307 && (cb.headers.get("location") ?? "").includes("/login?confirmed=1"));
+}
+
+// ---------------------------------------------------------------------------
+// 2b. Email + password authentication
+// ---------------------------------------------------------------------------
+{
+  const a = anon();
+  await sessionFor("abdullah.butt@gosaas.ai"); // sets a known password on the seeded user
+  const wrong = await a.auth.signInWithPassword({ email: "abdullah.butt@gosaas.ai", password: "definitely-wrong-password" });
+  check("auth", "wrong password rejected", wrong.error?.code === "invalid_credentials", wrong.error?.code);
+  const unknown = await a.auth.signInWithPassword({ email: "nobody@gosaas.ai", password: "whatever-123456" });
+  check("auth", "unknown user gets the same generic error", unknown.error?.code === "invalid_credentials", unknown.error?.code);
+  const pw = `Audit-${crypto.randomUUID()}`;
+  const su = await a.auth.signUp({ email: "new.member@gosaas.ai", password: pw });
+  check("auth", "@gosaas.ai self sign-up creates the account", !su.error && !!su.data.user, su.error?.message);
+  const newProfile = await admin.from("profiles").select("public_slug").eq("id", su.data.user?.id ?? "");
+  check("auth", "profile created for new user", newProfile.data?.[0]?.public_slug === "new", JSON.stringify(newProfile.data));
+  const early = await a.auth.signInWithPassword({ email: "new.member@gosaas.ai", password: pw });
+  check("auth", "unconfirmed account cannot sign in (confirmation on)", early.error?.code === "email_not_confirmed", early.error?.code);
+  check("auth", "no session issued before confirmation", !su.data.session);
+  const weak = await a.auth.signUp({ email: "weak.pw@gosaas.ai", password: "123" });
+  check("auth", "too-short password rejected by Supabase", !!weak.error, weak.error?.code);
 }
 
 // ---------------------------------------------------------------------------
 // 3. Authenticated QA user can perform intended writes (own data only)
 // ---------------------------------------------------------------------------
 const { client: qa, session: qaSession } = await sessionFor("abdullah.butt@gosaas.ai");
-check("auth", "email OTP code signs the QA user in", !!qaSession?.access_token);
+check("auth", "correct password signs the QA user in", !!qaSession?.access_token);
+check("auth", "session belongs to the right user", qaSession?.user?.id === OWNER_ID && qaSession?.user?.email === "abdullah.butt@gosaas.ai");
 const docId = crypto.randomUUID();
 const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
 {
