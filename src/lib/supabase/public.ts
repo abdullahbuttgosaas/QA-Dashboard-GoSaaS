@@ -7,8 +7,8 @@ import type { Database } from "@/types/database";
 export type Db = SupabaseClient<Database>;
 
 // Anonymous, cookie-free client for the manager view. It never carries a user session, so manager pages
-// show exactly what an anonymous manager may see (public profiles only, read-only) even when a QA user
-// is signed in in the same browser. connection() keeps these pages rendered per request, not prerendered.
+// show exactly the manager-safe dataset (all QAs, confirmed data, read-only) even when a QA user is signed
+// in in the same browser. connection() keeps these pages rendered per request, not prerendered.
 export async function createPublicClient(): Promise<Db> {
   await connection();
   return createClient<Database>(publicEnv.supabaseUrl(), publicEnv.supabasePublishableKey(), {

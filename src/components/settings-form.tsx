@@ -38,15 +38,7 @@ export function SettingsForm({ profile, siteUrl, saved }: { profile: PublicProfi
             <input name="public_slug" defaultValue={profile.public_slug} className={`${input} rounded-l-none`} required />
           </div>
         </Label>
-        <label className="flex items-start gap-3">
-          <input type="checkbox" name="is_public" defaultChecked={profile.is_public} className="mt-0.5 size-4 accent-[var(--accent)]" />
-          <span>
-            <span className="block text-sm font-medium text-ink">Show my work on the manager dashboard</span>
-            <span className="block text-xs text-ink-muted">
-              When off, managers cannot see your tickets, metrics or reports, and you are excluded from team totals.
-            </span>
-          </span>
-        </label>
+        <p className="text-xs text-ink-muted">Managers can always see your confirmed tickets, reports and metrics (read-only).</p>
       </fieldset>
 
       <fieldset className="space-y-4">

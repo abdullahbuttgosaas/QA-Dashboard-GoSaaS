@@ -1,7 +1,65 @@
+-- Manager visibility model.
+--
+-- anon (manager, read-only): sees EVERY QA and all manager-safe data:
+--   * profiles (safe columns only; email is not granted to anon)
+--   * qa_records (these are always human-confirmed/entered tickets)
+--   * confirmed report documents (metadata only; raw AI extraction is not granted to anon) and their files
+--   QAs cannot hide their work: profiles.is_public no longer affects any policy (column kept, unused).
+-- authenticated (QA workspace): reads and writes ONLY their own rows; other QAs' data and drafts are never visible.
+-- anon still has SELECT only (no INSERT/UPDATE/DELETE grants), unchanged from the security migration.
+
+-- ---------------------------------------------------------------------------
+-- Read policies (replace the is_public-based ones)
+-- ---------------------------------------------------------------------------
+
+drop policy "profiles: read public or own" on public.profiles;
+create policy "profiles: manager reads all" on public.profiles
+  for select to anon
+  using (true);
+create policy "profiles: read own" on public.profiles
+  for select to authenticated
+  using (id = (select auth.uid()));
+
+drop policy "qa_records: read visible" on public.qa_records;
+create policy "qa_records: manager reads all" on public.qa_records
+  for select to anon
+  using (true);
+create policy "qa_records: read own" on public.qa_records
+  for select to authenticated
+  using (owner_id = (select auth.uid()));
+
+-- Drafts and unconfirmed extractions stay owner-only ("qa_documents: read own" is unchanged).
+drop policy "qa_documents: read confirmed public" on public.qa_documents;
+create policy "qa_documents: manager reads confirmed" on public.qa_documents
+  for select to anon
+  using (extraction_status = 'confirmed' and record_id is not null);
+
+drop policy "qa-reports: read confirmed public" on storage.objects;
+create policy "qa-reports: manager reads confirmed" on storage.objects
+  for select to anon
+  using (
+    bucket_id = 'qa-reports'
+    and exists (
+      select 1
+      from public.qa_documents d
+      where d.storage_path = storage.objects.name
+        and d.extraction_status = 'confirmed'
+        and d.record_id is not null
+    )
+  );
+
+-- No longer referenced by any policy.
+drop function app_private.can_view_owner(uuid);
+
+-- is_public no longer means anything; QAs can no longer change it (column kept to avoid a destructive migration).
+revoke update (is_public) on public.profiles from authenticated;
+
+-- ---------------------------------------------------------------------------
 -- Team-wide metrics for the manager view.
--- p_owner = NULL now means "all QA users visible to the caller". These functions are SECURITY INVOKER,
--- so RLS still decides which QAs are included: anonymous managers only ever see public profiles.
--- No table, policy, grant or signature changes.
+-- p_owner = NULL means "all QA users visible to the caller". These functions are SECURITY INVOKER, so RLS
+-- decides the scope: anonymous managers get every QA; a signed-in QA only ever gets their own rows.
+-- No signature changes.
+-- ---------------------------------------------------------------------------
 
 create or replace function public.qa_metrics_for_range(p_owner uuid, p_start date, p_end date)
 returns table (

@@ -10,7 +10,7 @@ export type ManagerScope = {
   ownerNames: Map<string, string>;
 };
 
-// Resolves the ?qa=<slug> selection against the QAs a manager may see (public profiles only).
+// Resolves the ?qa=<slug> selection against all QA users (managers always see every QA).
 // Always uses the anonymous client, so the manager view is identical whether or not a QA is signed in.
 export async function getManagerScope(qaParam: string | string[] | undefined): Promise<ManagerScope> {
   const db = await createPublicClient();

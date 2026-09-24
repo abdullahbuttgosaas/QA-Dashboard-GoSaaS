@@ -23,7 +23,7 @@ export type RecordDocument = {
   created_at: string;
 };
 
-// ownerId = null lists every ticket the caller may see (RLS), e.g. all public QAs for managers.
+// ownerId = null lists every ticket the caller may see (RLS): all QAs for managers, only own rows for a QA.
 export async function listTickets(db: Db, ownerId: string | null): Promise<TicketSummary[]> {
   let query = db
     .from("qa_records")

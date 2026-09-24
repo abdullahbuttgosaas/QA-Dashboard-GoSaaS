@@ -10,7 +10,7 @@ Stack: Next.js 16 (App Router) · TypeScript · Tailwind v4 · Supabase (Postgre
 - **Manager experience (`/manager`, `/manager/tickets`, `/manager/tickets/[id]`)** — always read-only, no sign-in.
   A QA selector (`?qa=<slug>`, or *All QAs*) filters metrics, trends and tickets and is kept while navigating.
   These pages query Supabase with an anonymous, cookie-free client, so they look identical even when a QA user
-  is signed in, and only public QA profiles are included.
+  is signed in. Managers always see every QA and all confirmed data; QAs cannot hide their work.
 - **QA experience (`/qa`, `/qa/tickets`, `/qa/tickets/[id]`, `/qa/upload`, `/qa/review/[id]`, `/qa/settings`)** —
   requires an `@gosaas.ai` email + password sign-in; shows only the signed-in QA's own data plus create/edit/delete,
   upload and AI extraction. Sign-in lands on `/qa`.
@@ -24,7 +24,7 @@ Stack: Next.js 16 (App Router) · TypeScript · Tailwind v4 · Supabase (Postgre
 
 | Table | Purpose |
 |---|---|
-| `profiles` | 1:1 with `auth.users`. Public slug, visibility, role, reporting-period settings. |
+| `profiles` | 1:1 with `auth.users`. Display name, slug (manager filter), role, reporting-period settings. (`is_public` is legacy and unused.) |
 | `qa_records` | One row per ticket. Relational columns for lookup/bucketing + `data` JSONB (requirements, test cases, bugs, retests, evidence, custom fields/sections). Shape: `src/types/qa.ts`. |
 | `qa_documents` | Uploaded report files (Supabase Storage bucket `qa-reports`) and AI extraction/review state. |
 
@@ -38,10 +38,10 @@ start date. With no start date, periods are rolling windows ending today.
 
 Hiding buttons is not the boundary; the database is.
 
-- `anon` (managers): `SELECT` only, only rows of public profiles, no `email`, no raw AI extraction,
-  only confirmed documents. No insert/update/delete grants at all.
+- `anon` (managers): `SELECT` only, across every QA: profiles (no `email`), tickets, confirmed documents and
+  their files. Never drafts or raw AI extraction. No insert/update/delete grants at all.
 - QA authentication: Supabase Auth email + password (`signUp`, `signInWithPassword`, `signOut`).
-- `authenticated`: writes only rows they own (`owner_id = auth.uid()`) and only with a `@gosaas.ai` JWT.
+- `authenticated` (QA workspace): reads and writes only rows they own (`owner_id = auth.uid()`) and only with a `@gosaas.ai` JWT.
 - Signups from other domains are rejected in the database (trigger on `auth.users`) and by the
   Supabase "Before User Created" hook, in addition to the login form check.
 - Report files are private; access is via 5-minute signed URLs governed by Storage RLS.

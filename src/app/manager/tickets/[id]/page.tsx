@@ -11,7 +11,7 @@ export default async function ManagerTicketPage({ params, searchParams }: PagePr
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   const scope = await getManagerScope(sp.qa);
   const record = await getTicketById(scope.db, id);
-  if (!record) notFound(); // also covers tickets of private (non-public) QAs, which RLS hides
+  if (!record) notFound();
   const documents = await getTicketDocuments(scope.db, record.id);
   const query = scope.selected ? `?qa=${encodeURIComponent(scope.selected.public_slug)}` : "";
 

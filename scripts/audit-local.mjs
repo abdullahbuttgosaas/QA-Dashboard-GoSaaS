@@ -207,11 +207,21 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
 
   // Private profile: nothing visible anonymously.
   const qa2Id = created.data?.user?.id;
-  await qa2.from("profiles").update({ is_public: false }).eq("id", qa2Id);
-  await qa2.from("qa_records").insert({ owner_id: qa2Id, ticket_number: "PRIV-1" });
-  check("privacy", "private profile hidden from anon", ((await a.from("profiles").select("id").eq("id", qa2Id)).data ?? []).length === 0);
-  check("privacy", "private tickets hidden from anon", ((await a.from("qa_records").select("id").eq("owner_id", qa2Id)).data ?? []).length === 0);
-  check("privacy", "private tickets hidden from other QA users", ((await qa.from("qa_records").select("id").eq("owner_id", qa2Id)).data ?? []).length === 0);
+  // The legacy is_public flag must not let a QA hide from managers (set via admin; QAs can no longer change it).
+  const flip = await qa2.from("profiles").update({ is_public: false }).eq("id", qa2Id).select("id");
+  check("visibility", "QA can no longer change is_public", !!flip.error || (flip.data ?? []).length === 0, flip.error?.code);
+  await admin.from("profiles").update({ is_public: false }).eq("id", qa2Id);
+  await qa2.from("qa_records").insert({
+    owner_id: qa2Id,
+    ticket_number: "HIDDEN-1",
+    qa_status: "qa_completed",
+    qa_completed_on: new Date().toISOString().slice(0, 10),
+    data: { schema_version: 1, test_cases: [{ status: "fail" }] },
+  });
+  check("visibility", "is_public=false QA is still visible to the manager", ((await a.from("profiles").select("id").eq("id", qa2Id)).data ?? []).length === 1);
+  check("visibility", "is_public=false QA's tickets are visible to the manager", ((await a.from("qa_records").select("id").eq("owner_id", qa2Id)).data ?? []).length === 1);
+  check("visibility", "other QA users still cannot read that QA's tickets", ((await qa.from("qa_records").select("id").eq("owner_id", qa2Id)).data ?? []).length === 0);
+  check("visibility", "other QA users cannot read that QA's profile", ((await qa.from("profiles").select("id").eq("id", qa2Id)).data ?? []).length === 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -224,7 +234,7 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
     return m ? m[1].trim() : null;
   };
 
-  // A second public QA with its own data, to prove the selector filters correctly.
+  // A third QA with its own data, to prove the selector filters correctly.
   const { client: qa3 } = await sessionFor("tester.two@gosaas.ai");
   const { data: two } = await qa3
     .from("qa_records")
@@ -251,10 +261,10 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
   }
 
   const all = await (await get("/manager/tickets")).text();
-  check("manager", "selector offers All QAs and each public QA", /<option value=""[^>]*>All QAs<\/option>/.test(all) && /value="abdullah"/.test(all) && /value="tester"/.test(all));
-  check("manager", "selector hides private QAs", !/value="second"/.test(all));
-  check("manager", "All QAs lists tickets from every public QA", all.includes("CHG0045893") && all.includes("TWO-1"));
-  check("manager", "All QAs never shows private QA tickets", !all.includes("PRIV-1"));
+  check("manager", "selector offers All QAs and every QA", /<option value=""[^>]*>All QAs<\/option>/.test(all) && /value="abdullah"/.test(all) && /value="tester"/.test(all));
+  check("manager", "selector lists every QA, including is_public=false", /value="second"/.test(all));
+  check("manager", "All QAs lists tickets from every QA", all.includes("CHG0045893") && all.includes("TWO-1"));
+  check("manager", "All QAs includes tickets of an is_public=false QA", all.includes("HIDDEN-1"));
   const onlyTester = await (await get("/manager/tickets?qa=tester")).text();
   check("manager", "individual QA filter lists only that QA's tickets", onlyTester.includes("TWO-1") && !onlyTester.includes("CHG0045893"));
   check("manager", "ticket links keep the QA filter", onlyTester.includes(`/manager/tickets/${two.id}?qa=tester`));
@@ -273,8 +283,25 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
   check("manager", "signing in does not change the manager view", metric(dashAllSignedIn, "test_cases_executed") === metric(dashAll, "test_cases_executed"));
   const detail = await (await get(`/manager/tickets/${abdullahTicket}`, cookie)).text();
   check("manager", "manager ticket detail is read-only even when signed in", detail.includes("CHG0045893") && !MUTATION_UI.test(detail));
-  const privId = (await admin.from("qa_records").select("id").eq("ticket_number", "PRIV-1").single()).data.id;
-  check("manager", "private QA ticket is not viewable by managers", (await get(`/manager/tickets/${privId}`)).status === 404);
+  const hiddenId = (await admin.from("qa_records").select("id").eq("ticket_number", "HIDDEN-1").single()).data.id;
+  const hiddenPage = await get(`/manager/tickets/${hiddenId}`);
+  check("manager", "manager can open a ticket of an is_public=false QA (read-only)", hiddenPage.status === 200 && !MUTATION_UI.test(await hiddenPage.text()));
+
+  // Every QA can be selected individually, and All QAs is the sum across all of them.
+  const everyone = (await admin.from("profiles").select("id, public_slug")).data;
+  const allTickets = (await admin.from("qa_records").select("owner_id, ticket_number")).data;
+  let sum = 0;
+  for (const q of everyone) {
+    const page = await (await get(`/manager/tickets?qa=${q.public_slug}`)).text();
+    const own = allTickets.filter((t) => t.owner_id === q.id).map((t) => t.ticket_number);
+    const others = allTickets.filter((t) => t.owner_id !== q.id).map((t) => t.ticket_number);
+    check("manager", `filter to ${q.public_slug} shows exactly that QA's tickets`, own.every((n) => page.includes(n)) && !others.some((n) => page.includes(`>${n}<`)));
+    const dash = await (await get(`/manager?qa=${q.public_slug}`)).text();
+    const exp = await expected(q.id);
+    sum += exp;
+    check("manager", `filter to ${q.public_slug} shows that QA's metrics`, metric(dash, "test_cases_executed") === String(exp), `${metric(dash, "test_cases_executed")} vs ${exp}`);
+  }
+  check("manager", "All QAs metrics equal the sum over every QA", metric(dashAll, "test_cases_executed") === String(sum), `${metric(dashAll, "test_cases_executed")} vs ${sum}`);
 
   // QA workspace
   const loginRedirect = await get("/login", cookie);

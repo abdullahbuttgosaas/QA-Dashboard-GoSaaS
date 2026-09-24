@@ -13,7 +13,6 @@ const SettingsSchema = z.object({
     .trim()
     .toLowerCase()
     .regex(/^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$/, "Use 1–40 lowercase letters, numbers or hyphens"),
-  is_public: z.boolean(),
   reporting_period_days: z.coerce.number().int().min(1).max(92),
   reporting_period_anchor: z
     .string()
@@ -29,7 +28,6 @@ export async function updateSettings(_prev: ActionResult | null, form: FormData)
   const parsed = SettingsSchema.safeParse({
     display_name: form.get("display_name"),
     public_slug: form.get("public_slug"),
-    is_public: form.get("is_public") === "on",
     reporting_period_days: form.get("reporting_period_days"),
     reporting_period_anchor: form.get("reporting_period_anchor") ?? "",
   });
