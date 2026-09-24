@@ -15,7 +15,6 @@ export const publicEnv = {
 
 // Server-only values. Importing this from a client component is a bug.
 export const serverEnv = {
-  supabaseSecretKey: () => required("SUPABASE_SECRET_KEY", process.env.SUPABASE_SECRET_KEY),
   geminiApiKey: () => required("GEMINI_API_KEY", process.env.GEMINI_API_KEY),
   geminiModel: () => process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
   allowedEmailDomain: () => (process.env.ALLOWED_EMAIL_DOMAIN ?? "gosaas.ai").toLowerCase(),

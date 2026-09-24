@@ -2,13 +2,26 @@
 -- Sample tickets are illustrative placeholders based on known ticket titles; their QA
 -- content is synthetic and should be replaced by real extracted reports.
 
-insert into auth.users (id, instance_id, aud, role, email, email_confirmed_at, raw_user_meta_data, created_at, updated_at)
+-- GoTrue expects these token columns to be '' rather than NULL for users inserted via SQL.
+insert into auth.users (
+  id, instance_id, aud, role, email, email_confirmed_at, raw_user_meta_data, raw_app_meta_data, created_at, updated_at,
+  confirmation_token, recovery_token, email_change_token_new, email_change, email_change_token_current, phone_change,
+  phone_change_token, reauthentication_token
+)
 values (
   '00000000-0000-4000-8000-000000000001',
   '00000000-0000-0000-0000-000000000000',
   'authenticated', 'authenticated',
   'abdullah.butt@gosaas.ai', now(),
-  '{"full_name": "Abdullah Butt"}', now(), now()
+  '{"full_name": "Abdullah Butt"}', '{"provider": "email", "providers": ["email"]}', now(), now(),
+  '', '', '', '', '', '', '', ''
+);
+
+insert into auth.identities (id, user_id, provider_id, provider, identity_data, created_at, updated_at, last_sign_in_at)
+values (
+  gen_random_uuid(), '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001', 'email',
+  '{"sub": "00000000-0000-4000-8000-000000000001", "email": "abdullah.butt@gosaas.ai", "email_verified": true}',
+  now(), now(), now()
 );
 
 insert into public.qa_records (owner_id, ticket_number, title, functional_area, qa_status, assigned_on, qa_completed_on, data)

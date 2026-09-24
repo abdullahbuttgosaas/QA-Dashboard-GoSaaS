@@ -1,7 +1,7 @@
 -- Run with: npx supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(24);
+select plan(27);
 
 -- Fixtures (seed provides abdullah.butt@gosaas.ai = ...0001 with public profile)
 insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data)
@@ -14,6 +14,10 @@ insert into public.qa_documents (id, owner_id, storage_path, file_name, mime_typ
 values ('00000000-0000-4000-9000-000000000001', '00000000-0000-4000-8000-000000000001',
         '00000000-0000-4000-8000-000000000001/d1/draft.pdf', 'draft.pdf', 'application/pdf', 10,
         'ready_for_review', '{"secret":"draft"}');
+
+insert into storage.objects (bucket_id, name) values
+  ('qa-reports', '00000000-0000-4000-8000-000000000001/d1/draft.pdf'),
+  ('qa-reports', '00000000-0000-4000-8000-000000000001/other/unlinked.pdf');
 
 -- Signup domain restriction ---------------------------------------------------
 select throws_ok(
@@ -39,6 +43,9 @@ select throws_ok($$ update public.qa_records set title = 'hacked' $$, '42501', n
 select throws_ok($$ delete from public.qa_records $$, '42501', null, 'anon cannot delete');
 select throws_ok($$ select public.confirm_extraction('00000000-0000-4000-9000-000000000001', '{}') $$,
   '42501', null, 'anon cannot confirm extraction');
+select is((select count(*)::int from storage.objects where bucket_id = 'qa-reports'), 0, 'anon cannot read draft report files');
+select throws_ok($$ insert into storage.objects (bucket_id, name) values ('qa-reports', '00000000-0000-4000-8000-000000000001/x/y.pdf') $$,
+  '42501', null, 'anon cannot upload files');
 select is((select tickets_completed from public.qa_metrics_for_range('00000000-0000-4000-8000-000000000001', current_date - 30, current_date)), 2,
   'anon can read public metrics');
 reset role;
@@ -61,6 +68,11 @@ reset role;
 select is((select title from public.qa_records where ticket_number = 'CHG-PRIVATE'), 'Private ticket', 'other owner''s ticket untouched');
 select is((select test_cases_passed from public.qa_record_metrics where ticket_number = 'CHG0099999'), 1, 'metrics view derives from JSONB');
 select is((select extraction_status::text from public.qa_documents where id = '00000000-0000-4000-9000-000000000001'), 'confirmed', 'document marked confirmed');
+
+set local role anon;
+select is((select array_agg(name)::text from storage.objects where bucket_id = 'qa-reports'),
+  '{00000000-0000-4000-8000-000000000001/d1/draft.pdf}', 'anon can read confirmed report file only');
+reset role;
 
 select * from finish();
 rollback;
