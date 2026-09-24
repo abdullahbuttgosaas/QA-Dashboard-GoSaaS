@@ -30,10 +30,10 @@ export function SettingsForm({ profile, siteUrl, saved }: { profile: PublicProfi
         <Label label="Display name" error={errors.display_name}>
           <input name="display_name" defaultValue={profile.display_name} className={input} required />
         </Label>
-        <Label label="Public dashboard URL" error={errors.public_slug} hint="Share this link with managers. It is read-only.">
+        <Label label="Manager filter name" error={errors.public_slug} hint="Used in the manager dashboard link that shows only your work.">
           <div className="flex items-center">
             <span className="flex h-9 items-center rounded-l-md border border-r-0 border-line-strong bg-surface-muted px-3 text-sm text-ink-muted">
-              {siteUrl.replace(/^https?:\/\//, "")}/
+              {siteUrl.replace(/^https?:\/\//, "")}/manager?qa=
             </span>
             <input name="public_slug" defaultValue={profile.public_slug} className={`${input} rounded-l-none`} required />
           </div>
@@ -41,9 +41,9 @@ export function SettingsForm({ profile, siteUrl, saved }: { profile: PublicProfi
         <label className="flex items-start gap-3">
           <input type="checkbox" name="is_public" defaultChecked={profile.is_public} className="mt-0.5 size-4 accent-[var(--accent)]" />
           <span>
-            <span className="block text-sm font-medium text-ink">Public read-only dashboard</span>
+            <span className="block text-sm font-medium text-ink">Show my work on the manager dashboard</span>
             <span className="block text-xs text-ink-muted">
-              When off, only you can see your dashboard, tickets and reports.
+              When off, managers cannot see your tickets, metrics or reports, and you are excluded from team totals.
             </span>
           </span>
         </label>

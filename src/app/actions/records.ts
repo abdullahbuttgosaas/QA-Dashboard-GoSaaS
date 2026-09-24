@@ -7,12 +7,13 @@ import { QaRecordInputSchema } from "@/types/qa";
 import { toRecordColumns } from "@/services/records";
 import { requireQaSession, zodFieldErrors, type ActionResult } from "./shared";
 
-function ticketUrl(slug: string, ticketNumber: string) {
-  return `/${slug}/tickets/${encodeURIComponent(ticketNumber)}`;
+function revalidateDashboards() {
+  revalidatePath("/qa", "layout");
+  revalidatePath("/manager", "layout");
 }
 
-// Create (originalTicketNumber = null) or update a ticket from the manual editor.
-export async function saveTicket(originalTicketNumber: string | null, payload: unknown): Promise<ActionResult> {
+// Create (recordId = null) or update a ticket from the manual editor.
+export async function saveTicket(recordId: string | null, payload: unknown): Promise<ActionResult> {
   const session = await requireQaSession();
   if ("error" in session) return { ok: false, error: session.error };
 
@@ -25,20 +26,22 @@ export async function saveTicket(originalTicketNumber: string | null, payload: u
   const columns = toRecordColumns(parsed.data);
   const { profile } = session;
 
-  if (originalTicketNumber === null) {
-    const { error } = await supabase.from("qa_records").insert({ ...columns, owner_id: profile.id });
+  let savedId = recordId;
+  if (recordId === null) {
+    const { data, error } = await supabase.from("qa_records").insert({ ...columns, owner_id: profile.id }).select("id").single();
     if (error) {
       return {
         ok: false,
         error: error.code === "23505" ? `Ticket ${columns.ticket_number} already exists.` : `Could not save: ${error.message}`,
       };
     }
+    savedId = data.id;
   } else {
     const { data, error } = await supabase
       .from("qa_records")
       .update(columns)
       .eq("owner_id", profile.id)
-      .eq("ticket_number", originalTicketNumber)
+      .eq("id", recordId)
       .select("id");
     if (error) {
       return {
@@ -49,8 +52,8 @@ export async function saveTicket(originalTicketNumber: string | null, payload: u
     if (!data?.length) return { ok: false, error: "Ticket not found or you do not have permission to edit it." };
   }
 
-  revalidatePath(`/${profile.public_slug}`, "layout");
-  redirect(ticketUrl(profile.public_slug, columns.ticket_number));
+  revalidateDashboards();
+  redirect(`/qa/tickets/${savedId}`);
 }
 
 export async function deleteTicket(recordId: string): Promise<ActionResult> {
@@ -67,6 +70,6 @@ export async function deleteTicket(recordId: string): Promise<ActionResult> {
   if (error) return { ok: false, error: `Could not delete: ${error.message}` };
   if (!data?.length) return { ok: false, error: "Ticket not found." };
 
-  revalidatePath(`/${session.profile.public_slug}`, "layout");
-  redirect(`/${session.profile.public_slug}/tickets`);
+  revalidateDashboards();
+  redirect("/qa/tickets");
 }

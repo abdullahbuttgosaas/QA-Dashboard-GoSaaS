@@ -15,7 +15,7 @@
     "db:types:remote": "supabase gen types typescript --linked --schema public > src/types/database.ts",
     "db:test": "supabase db reset --local && supabase test db",
     "test": "vitest run",
-    "audit:local": "node scripts/audit-local.mjs"
+    "audit:local": "supabase db reset --local && node scripts/audit-local.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.24.0",

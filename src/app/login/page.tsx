@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: "Sign in" };
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const sp = await searchParams;
   const next = safeNextPath(typeof sp.next === "string" ? sp.next : null) ?? undefined;
-  if ((await getViewer())?.isQaUser) redirect(next ?? "/");
+  if ((await getViewer())?.isQaUser) redirect(next ?? "/qa");
   const signup = sp.mode === "signup";
 
   return (

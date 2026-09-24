@@ -1,5 +1,5 @@
 // End-to-end permissions audit against the LOCAL Supabase stack and local dev server.
-// Usage: npm run audit:local   (requires `npm run db:start` and `npm run dev`)
+// Usage: npm run audit:local   (resets the local DB first; requires `npm run db:start` and `npm run dev`)
 // Refuses to run against anything that is not localhost. Mutates only the local database.
 
 import { execSync } from "node:child_process";
@@ -82,14 +82,9 @@ const get = (path, cookie) => fetch(APP + path, { redirect: "manual", headers: c
   check("anon", "cannot call signup hook", !!(await a.rpc("hook_before_user_created", { event: {} })).error);
   check("anon", "cannot upload files", !!(await a.storage.from(BUCKET).upload(`${OWNER_ID}/anon/x.txt`, new Blob(["x"], { type: "text/plain" }), { contentType: "text/plain" })).error);
 
-  const page = await get("/abdullah");
-  const html = await page.text();
-  check("anon-http", "dashboard renders", page.status === 200);
-  check("anon-http", "no edit controls on dashboard", !/Upload QA report|New ticket|Sign out/.test(html));
-  const ticketHtml = await (await get("/abdullah/tickets/CHG0045893")).text();
-  check("anon-http", "no edit controls on ticket", !/>Edit<|>Delete</.test(ticketHtml));
-  for (const p of ["/abdullah/upload", "/abdullah/settings", "/abdullah/tickets/new", "/abdullah/tickets/CHG0045893/edit"]) {
-    check("anon-http", `owner page hidden: ${p}`, (await get(p)).status === 404);
+  for (const p of ["/qa", "/qa/tickets", "/qa/upload", "/qa/settings", "/qa/tickets/new"]) {
+    const r = await get(p);
+    check("anon-http", `QA page requires sign-in: ${p}`, r.status === 307 && (r.headers.get("location") ?? "").startsWith("/login?next="));
   }
   const ex = await fetch(`${APP}/api/documents/${OWNER_ID}/extract`, { method: "POST" });
   check("anon-http", "extraction API rejects anonymous", ex.status === 401);
@@ -167,11 +162,9 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
   check("qa", "can register own upload", !reg.error, reg.error?.message);
 
   const cookie = await cookieHeader(qaSession);
-  const uploadPage = await get("/abdullah/upload", cookie);
+  const uploadPage = await get("/qa/upload", cookie);
   check("qa-http", "owner sees upload page", uploadPage.status === 200 && (await uploadPage.text()).includes("Upload QA report"));
-  const tHtml = await (await get("/abdullah/tickets/CHG0045893", cookie)).text();
-  check("qa-http", "owner sees Edit/Delete on ticket", />Edit</.test(tHtml) && />Delete</.test(tHtml));
-  check("qa-http", "owner sees review page for draft", (await get(`/abdullah/review/${docId}`, cookie)).status === 200);
+  check("qa-http", "owner sees review page for draft", (await get(`/qa/review/${docId}`, cookie)).status === 200);
 }
 
 // ---------------------------------------------------------------------------
@@ -183,7 +176,8 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
   check("storage", "bucket has no public URLs", pub.status >= 400);
   check("storage", "anon cannot sign draft file", !!(await a.storage.from(BUCKET).createSignedUrl(draftPath, 60)).error);
   check("storage", "anon cannot list files", ((await a.storage.from(BUCKET).list(OWNER_ID)).data ?? []).length === 0);
-  check("storage", "anon document link for draft is 404", (await get(`/abdullah/documents/${docId}`)).status === 404);
+  check("storage", "manager document link for draft is 404", (await get(`/manager/documents/${docId}`)).status === 404);
+  check("storage", "owner can open own draft via QA link", (await get(`/qa/documents/${docId}`, await cookieHeader(qaSession))).status === 307);
   const own = await qa.storage.from(BUCKET).createSignedUrl(draftPath, 60);
   check("storage", "owner can open own draft", !own.error && (await fetch(own.data.signedUrl)).status === 200);
 
@@ -208,8 +202,8 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
   const signed = await a.storage.from(BUCKET).createSignedUrl(draftPath, 60);
   check("storage", "anon can open confirmed report (read-only)", !signed.error && (await fetch(signed.data.signedUrl)).status === 200);
   check("storage", "anon still cannot delete confirmed report", ((await a.storage.from(BUCKET).remove([draftPath])).data ?? []).length === 0);
-  const docRoute = await get(`/abdullah/documents/${docId}`);
-  check("storage", "anon document link for confirmed report redirects", docRoute.status === 307 || docRoute.status === 302);
+  const docRoute = await get(`/manager/documents/${docId}`);
+  check("storage", "manager document link for confirmed report redirects", docRoute.status === 307 || docRoute.status === 302);
 
   // Private profile: nothing visible anonymously.
   const qa2Id = created.data?.user?.id;
@@ -218,6 +212,93 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
   check("privacy", "private profile hidden from anon", ((await a.from("profiles").select("id").eq("id", qa2Id)).data ?? []).length === 0);
   check("privacy", "private tickets hidden from anon", ((await a.from("qa_records").select("id").eq("owner_id", qa2Id)).data ?? []).length === 0);
   check("privacy", "private tickets hidden from other QA users", ((await qa.from("qa_records").select("id").eq("owner_id", qa2Id)).data ?? []).length === 0);
+}
+
+// ---------------------------------------------------------------------------
+// 5. Manager vs QA experiences
+// ---------------------------------------------------------------------------
+{
+  const MUTATION_UI = /Upload QA report|New ticket|>Edit<|>Delete<|Sign out|>Settings<|Confirm and save|Create ticket|Save changes/;
+  const metric = (html, name) => {
+    const m = new RegExp(`data-metric="${name}"[^>]*>([^<]*)<`).exec(html);
+    return m ? m[1].trim() : null;
+  };
+
+  // A second public QA with its own data, to prove the selector filters correctly.
+  const { client: qa3 } = await sessionFor("tester.two@gosaas.ai");
+  const { data: two } = await qa3
+    .from("qa_records")
+    .insert({
+      owner_id: (await qa3.auth.getUser()).data.user.id,
+      ticket_number: "TWO-1",
+      title: "Second QA ticket",
+      qa_status: "qa_completed",
+      qa_completed_on: new Date().toISOString().slice(0, 10),
+      data: { schema_version: 1, test_cases: [{ status: "pass" }, { status: "pass" }, { status: "fail" }], bugs: [{ title: "B", severity: "critical" }] },
+    })
+    .select("id")
+    .single();
+  const abdullahTicket = (await anon().from("qa_records").select("id").eq("ticket_number", "CHG0045893").single()).data.id;
+  const cookie = await cookieHeader(qaSession);
+
+  for (const [label, c] of [["anon", undefined], ["signed-in QA", cookie]]) {
+    for (const p of ["/manager", "/manager/tickets", `/manager/tickets/${abdullahTicket}`, "/manager?qa=tester", "/manager/tickets?qa=abdullah"]) {
+      const r = await get(p, c);
+      const html = await r.text();
+      check("manager", `${p} loads for ${label}`, r.status === 200, String(r.status));
+      check("manager", `${p} has no mutation controls for ${label}`, !MUTATION_UI.test(html));
+    }
+  }
+
+  const all = await (await get("/manager/tickets")).text();
+  check("manager", "selector offers All QAs and each public QA", /<option value=""[^>]*>All QAs<\/option>/.test(all) && /value="abdullah"/.test(all) && /value="tester"/.test(all));
+  check("manager", "selector hides private QAs", !/value="second"/.test(all));
+  check("manager", "All QAs lists tickets from every public QA", all.includes("CHG0045893") && all.includes("TWO-1"));
+  check("manager", "All QAs never shows private QA tickets", !all.includes("PRIV-1"));
+  const onlyTester = await (await get("/manager/tickets?qa=tester")).text();
+  check("manager", "individual QA filter lists only that QA's tickets", onlyTester.includes("TWO-1") && !onlyTester.includes("CHG0045893"));
+  check("manager", "ticket links keep the QA filter", onlyTester.includes(`/manager/tickets/${two.id}?qa=tester`));
+
+  const a = anon();
+  const expected = async (owner) => (await a.rpc("qa_metrics_by_period", { p_owner: owner, p_count: 26 })).data.at(-1).test_cases_executed;
+  const testerId = (await a.from("profiles").select("id").eq("public_slug", "tester").single()).data.id;
+  const dashAll = await (await get("/manager")).text();
+  const dashTester = await (await get("/manager?qa=tester")).text();
+  const dashAbdullah = await (await get("/manager?qa=abdullah")).text();
+  check("manager", "individual QA metrics match that QA only", metric(dashTester, "test_cases_executed") === String(await expected(testerId)), metric(dashTester, "test_cases_executed"));
+  check("manager", "individual QA bug count filtered", metric(dashTester, "bugs_total") === "1", metric(dashTester, "bugs_total"));
+  check("manager", "All QAs metrics are the team total", metric(dashAll, "test_cases_executed") === String(await expected(null)), metric(dashAll, "test_cases_executed"));
+  check("manager", "different QA selections give different metrics", metric(dashTester, "tickets_completed") !== metric(dashAbdullah, "tickets_completed") || metric(dashTester, "test_cases_executed") !== metric(dashAbdullah, "test_cases_executed"));
+  const dashAllSignedIn = await (await get("/manager", cookie)).text();
+  check("manager", "signing in does not change the manager view", metric(dashAllSignedIn, "test_cases_executed") === metric(dashAll, "test_cases_executed"));
+  const detail = await (await get(`/manager/tickets/${abdullahTicket}`, cookie)).text();
+  check("manager", "manager ticket detail is read-only even when signed in", detail.includes("CHG0045893") && !MUTATION_UI.test(detail));
+  const privId = (await admin.from("qa_records").select("id").eq("ticket_number", "PRIV-1").single()).data.id;
+  check("manager", "private QA ticket is not viewable by managers", (await get(`/manager/tickets/${privId}`)).status === 404);
+
+  // QA workspace
+  const loginRedirect = await get("/login", cookie);
+  check("qa", "signed-in QA visiting /login is sent to /qa", loginRedirect.status === 307 && loginRedirect.headers.get("location") === "/qa");
+  const home = await get("/", cookie);
+  check("qa", "home sends signed-in QA to /qa", home.status === 307 && home.headers.get("location") === "/qa");
+  check("qa", "home sends anonymous visitors to /manager", (await get("/")).headers.get("location") === "/manager");
+  const qaDash = await (await get("/qa", cookie)).text();
+  check("qa", "/qa has QA controls", /Upload QA report/.test(qaDash) && /New ticket/.test(qaDash) && /Sign out/.test(qaDash));
+  const qaList = await (await get("/qa/tickets", cookie)).text();
+  check("qa", "/qa/tickets has QA controls", /New ticket/.test(qaList) && /Upload QA report/.test(qaList));
+  check("qa", "/qa/tickets shows only own tickets", qaList.includes("CHG0045893") && !qaList.includes("TWO-1"));
+  const qaDetail = await (await get(`/qa/tickets/${abdullahTicket}`, cookie)).text();
+  check("qa", "/qa/tickets/[id] has Edit and Delete", />Edit</.test(qaDetail) && />Delete</.test(qaDetail));
+  check("qa", "QA cannot open another QA's ticket in the workspace", (await get(`/qa/tickets/${two.id}`, cookie)).status === 404);
+  check("qa", "/qa/tickets/[id]/edit loads for owner", (await get(`/qa/tickets/${abdullahTicket}/edit`, cookie)).status === 200);
+
+  // Legacy public URLs
+  const legacy = [["/abdullah", "/manager"], ["/abdullah/tickets", "/manager/tickets"], ["/abdullah/tickets/CHG0045893", `/manager/tickets/${abdullahTicket}`]];
+  for (const [from, to] of legacy) {
+    const r = await get(from);
+    check("legacy", `${from} redirects to ${to}`, [307, 308].includes(r.status) && r.headers.get("location") === to, `${r.status} ${r.headers.get("location")}`);
+  }
+  check("legacy", "unknown slug is 404, not a redirect", (await get("/not-a-real-qa")).status === 404);
 }
 
 // ---------------------------------------------------------------------------

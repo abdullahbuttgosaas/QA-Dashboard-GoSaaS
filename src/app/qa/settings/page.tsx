@@ -1,16 +1,15 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { requireEditor } from "@/services/profiles";
+import { requireQa } from "@/services/profiles";
 import { SettingsForm } from "@/components/settings-form";
 import { Card } from "@/components/ui/card";
 import { siteOrigin } from "@/lib/site";
 
 export const metadata: Metadata = { title: "Settings" };
 
-export default async function SettingsPage({ params, searchParams }: PageProps<"/[slug]/settings">) {
-  const { slug } = await params;
+export default async function SettingsPage({ searchParams }: PageProps<"/qa/settings">) {
   const { saved } = await searchParams;
-  const { profile } = await requireEditor(slug);
+  const { profile } = await requireQa("/qa/settings");
   const origin = siteOrigin(await headers());
 
   return (

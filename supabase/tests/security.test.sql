@@ -1,15 +1,16 @@
 -- Run with: npx supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(27);
+select plan(31);
 
 -- Fixtures (seed provides abdullah.butt@gosaas.ai = ...0001 with public profile)
 insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data)
 values ('00000000-0000-4000-8000-000000000002', '00000000-0000-0000-0000-000000000000',
         'authenticated', 'authenticated', 'private.person@gosaas.ai', '{}');
 update public.profiles set is_public = false where id = '00000000-0000-4000-8000-000000000002';
-insert into public.qa_records (owner_id, ticket_number, title)
-values ('00000000-0000-4000-8000-000000000002', 'CHG-PRIVATE', 'Private ticket');
+insert into public.qa_records (owner_id, ticket_number, title, qa_status, qa_completed_on, data)
+values ('00000000-0000-4000-8000-000000000002', 'CHG-PRIVATE', 'Private ticket', 'qa_completed', current_date,
+        '{"schema_version":1,"test_cases":[{"status":"pass"},{"status":"pass"},{"status":"fail"}]}');
 insert into public.qa_documents (id, owner_id, storage_path, file_name, mime_type, size_bytes, extraction_status, extraction)
 values ('00000000-0000-4000-9000-000000000001', '00000000-0000-4000-8000-000000000001',
         '00000000-0000-4000-8000-000000000001/d1/draft.pdf', 'draft.pdf', 'application/pdf', 10,
@@ -48,6 +49,13 @@ select throws_ok($$ insert into storage.objects (bucket_id, name) values ('qa-re
   '42501', null, 'anon cannot upload files');
 select is((select tickets_completed from public.qa_metrics_for_range('00000000-0000-4000-8000-000000000001', current_date - 30, current_date)), 2,
   'anon can read public metrics');
+-- Team view (p_owner NULL): only public QAs count for anonymous managers.
+select is(
+  (select test_cases_executed from public.qa_metrics_for_range(null, current_date - 30, current_date)),
+  (select test_cases_executed from public.qa_metrics_for_range('00000000-0000-4000-8000-000000000001', current_date - 30, current_date)),
+  'anon team metrics equal the public QA only (private QA excluded)');
+select is((select count(*)::int from public.reporting_periods(null, 3)), 3, 'team view has default reporting periods');
+select is((select period_end - period_start + 1 from public.reporting_periods(null, 1)), 14, 'team periods are 14 days');
 reset role;
 
 -- Authenticated QA user (owner 0001) ------------------------------------------
@@ -66,6 +74,10 @@ select lives_ok($$ select public.confirm_extraction('00000000-0000-4000-9000-000
 reset role;
 
 select is((select title from public.qa_records where ticket_number = 'CHG-PRIVATE'), 'Private ticket', 'other owner''s ticket untouched');
+select cmp_ok(
+  (select test_cases_executed from public.qa_metrics_for_range(null, current_date - 30, current_date)), '>',
+  (select test_cases_executed from public.qa_metrics_for_range('00000000-0000-4000-8000-000000000001', current_date - 30, current_date)),
+  'team metrics sum across QAs when the caller may see them');
 select is((select test_cases_passed from public.qa_record_metrics where ticket_number = 'CHG0099999'), 1, 'metrics view derives from JSONB');
 select is((select extraction_status::text from public.qa_documents where id = '00000000-0000-4000-9000-000000000001'), 'confirmed', 'document marked confirmed');
 

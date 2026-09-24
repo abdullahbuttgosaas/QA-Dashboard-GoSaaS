@@ -50,5 +50,5 @@ export async function updateSettings(_prev: ActionResult | null, form: FormData)
   }
 
   revalidatePath("/", "layout");
-  redirect(`/${parsed.data.public_slug}/settings?saved=1`);
+  redirect("/qa/settings?saved=1");
 }

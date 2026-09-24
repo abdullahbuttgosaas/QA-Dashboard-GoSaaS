@@ -20,12 +20,10 @@ const STAGE_TEXT: Record<Stage, string> = {
 // Uploads directly from the browser to Supabase Storage (avoids serverless body limits),
 // registers the document, then triggers AI extraction and opens the review screen.
 export function UploadForm({
-  slug,
   ownerId,
   accept,
   maxBytes,
 }: {
-  slug: string;
   ownerId: string;
   accept: Record<string, string>;
   maxBytes: number;
@@ -75,7 +73,7 @@ export function UploadForm({
     setStage("extracting");
     // Even if extraction fails, the review screen lets the user retry or fill in manually.
     await fetch(`/api/documents/${id}/extract`, { method: "POST" }).catch(() => null);
-    router.push(`/${slug}/review/${id}`);
+    router.push(`/qa/review/${id}`);
   }
 
   return (

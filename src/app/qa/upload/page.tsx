@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { requireEditor } from "@/services/profiles";
+import { createClient } from "@/lib/supabase/server";
+import { requireQa } from "@/services/profiles";
 import { ACCEPTED_REPORT_TYPES, listOwnDocuments, MAX_REPORT_BYTES, type DocumentRow } from "@/services/documents";
 import { UploadForm } from "@/components/reports/upload-form";
 import { Card, CardHeader, EmptyState } from "@/components/ui/card";
@@ -18,10 +19,9 @@ const STATUS: Record<DocumentRow["extraction_status"], { label: string; classNam
   discarded: { label: "Discarded", className: "bg-surface-muted text-ink-muted" },
 };
 
-export default async function UploadPage({ params }: PageProps<"/[slug]/upload">) {
-  const { slug } = await params;
-  const { profile } = await requireEditor(slug);
-  const documents = await listOwnDocuments(profile.id);
+export default async function UploadPage() {
+  const { profile } = await requireQa("/qa/upload");
+  const documents = await listOwnDocuments(await createClient(), profile.id);
 
   return (
     <div className="grid gap-6 lg:grid-cols-5">
@@ -34,11 +34,11 @@ export default async function UploadPage({ params }: PageProps<"/[slug]/upload">
           </p>
         </div>
         <Card className="p-5">
-          <UploadForm slug={slug} ownerId={profile.id} accept={ACCEPTED_REPORT_TYPES} maxBytes={MAX_REPORT_BYTES} />
+          <UploadForm ownerId={profile.id} accept={ACCEPTED_REPORT_TYPES} maxBytes={MAX_REPORT_BYTES} />
         </Card>
         <p className="text-sm text-ink-muted">
           Prefer to enter data by hand?{" "}
-          <Link href={`/${slug}/tickets/new`} className="text-accent hover:underline">
+          <Link href="/qa/tickets/new" className="text-accent hover:underline">
             Create a ticket manually
           </Link>
           .
@@ -53,7 +53,7 @@ export default async function UploadPage({ params }: PageProps<"/[slug]/upload">
           <ul className="divide-y divide-line">
             {documents.map((doc) => {
               const s = STATUS[doc.extraction_status];
-              const href = doc.extraction_status === "confirmed" ? `/${slug}/documents/${doc.id}` : `/${slug}/review/${doc.id}`;
+              const href = doc.extraction_status === "confirmed" ? `/qa/documents/${doc.id}` : `/qa/review/${doc.id}`;
               return (
                 <li key={doc.id}>
                   <Link href={href} className="flex items-center gap-3 px-5 py-3 hover:bg-surface-muted">

@@ -1,11 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/cn";
 
-export function NavLinks({ links }: { links: Array<{ href: string; label: string; exact?: boolean }> }) {
+type NavLink = { href: string; label: string; exact?: boolean };
+
+// preserveParams keeps selected query parameters (e.g. the manager's ?qa= filter) when switching pages.
+export function NavLinks({ links, preserveParams = [] }: { links: NavLink[]; preserveParams?: string[] }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const kept = new URLSearchParams();
+  for (const key of preserveParams) {
+    const value = searchParams.get(key);
+    if (value) kept.set(key, value);
+  }
+  const suffix = kept.size ? `?${kept}` : "";
+
   return (
     <nav className="flex items-center gap-1">
       {links.map((l) => {
@@ -13,7 +24,7 @@ export function NavLinks({ links }: { links: Array<{ href: string; label: string
         return (
           <Link
             key={l.href}
-            href={l.href}
+            href={`${l.href}${suffix}`}
             aria-current={active ? "page" : undefined}
             className={cn(
               "rounded-md px-3 py-1.5 text-sm font-medium",

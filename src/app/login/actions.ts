@@ -30,7 +30,7 @@ export async function signIn(_prev: AuthFormState, form: FormData): Promise<Auth
   if (error) return { error: describeSignInError(error), email: parsed.email };
 
   // Session cookies are set by the server client.
-  redirect(safeNextPath(String(form.get("next") ?? "")) ?? "/");
+  redirect(safeNextPath(String(form.get("next") ?? "")) ?? "/qa");
 }
 
 export async function signUp(_prev: AuthFormState, form: FormData): Promise<AuthFormState> {
@@ -45,6 +45,6 @@ export async function signUp(_prev: AuthFormState, form: FormData): Promise<Auth
   // Temporary: public sign-up will be removed once the app is validated.
   const { data, error } = await supabase.auth.signUp({ email: parsed.email, password });
   if (error) return { error: describeSignUpError(error), email: parsed.email };
-  if (data.session) redirect("/");
+  if (data.session) redirect("/qa");
   return { email: parsed.email, notice: "Account created. Sign in with your password." };
 }

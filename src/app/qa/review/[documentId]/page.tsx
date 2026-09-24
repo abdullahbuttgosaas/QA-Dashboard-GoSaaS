@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { requireEditor } from "@/services/profiles";
+import { createClient } from "@/lib/supabase/server";
+import { requireQa } from "@/services/profiles";
 import { getOwnDocument } from "@/services/documents";
-import { getTicket } from "@/services/records";
+import { findTicketId } from "@/services/records";
 import { draftFromStoredExtraction } from "@/services/extraction";
 import { confirmExtraction } from "@/app/actions/documents";
 import { RecordEditor } from "@/components/tickets/editor/record-editor";
@@ -14,17 +15,18 @@ import { formatBytes } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Review extraction" };
 
-export default async function ReviewPage({ params }: PageProps<"/[slug]/review/[documentId]">) {
-  const { slug, documentId } = await params;
-  const { profile } = await requireEditor(slug);
-  const doc = await getOwnDocument(profile.id, documentId);
+export default async function ReviewPage({ params }: PageProps<"/qa/review/[documentId]">) {
+  const { documentId } = await params;
+  const { profile } = await requireQa(`/qa/review/${documentId}`);
+  const db = await createClient();
+  const doc = await getOwnDocument(db, profile.id, documentId);
   if (!doc || doc.extraction_status === "discarded") notFound();
-  if (doc.extraction_status === "confirmed") redirect(`/${slug}/upload`);
+  if (doc.extraction_status === "confirmed") redirect("/qa/upload");
 
   const header = (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
-        <Link href={`/${slug}/upload`} className="text-sm text-ink-muted hover:text-ink">
+        <Link href="/qa/upload" className="text-sm text-ink-muted hover:text-ink">
           ← QA reports
         </Link>
         <h1 className="mt-1 text-xl font-semibold text-ink">Review extracted QA data</h1>
@@ -34,10 +36,10 @@ export default async function ReviewPage({ params }: PageProps<"/[slug]/review/[
         </p>
       </div>
       <div className="flex items-center gap-2">
-        <a href={`/${slug}/documents/${doc.id}`} target="_blank" rel="noopener" className={buttonClass("secondary", "sm")}>
+        <a href={`/qa/documents/${doc.id}`} target="_blank" rel="noopener" className={buttonClass("secondary", "sm")}>
           Open original
         </a>
-        <DiscardDocumentButton documentId={doc.id} redirectTo={`/${slug}/upload`} />
+        <DiscardDocumentButton documentId={doc.id} redirectTo="/qa/upload" />
       </div>
     </div>
   );
@@ -64,7 +66,7 @@ export default async function ReviewPage({ params }: PageProps<"/[slug]/review/[
 
   const failed = doc.extraction_status === "failed";
   const draft = draftFromStoredExtraction(doc.extraction);
-  const existing = draft.record.ticket_number ? await getTicket(profile.id, draft.record.ticket_number) : null;
+  const existingId = draft.record.ticket_number ? await findTicketId(db, profile.id, draft.record.ticket_number) : null;
 
   return (
     <div className="space-y-4">
@@ -75,7 +77,7 @@ export default async function ReviewPage({ params }: PageProps<"/[slug]/review/[
         notes={failed ? [] : draft.notes}
         submitLabel="Confirm and save"
         onSubmit={confirmExtraction.bind(null, doc.id)}
-        cancelHref={`/${slug}/upload`}
+        cancelHref="/qa/upload"
         banner={
           <>
             {failed ? (
@@ -95,9 +97,9 @@ export default async function ReviewPage({ params }: PageProps<"/[slug]/review/[
                 <RetryExtractionButton documentId={doc.id} label="Re-run extraction" />
               </div>
             )}
-            {existing && (
+            {existingId && (
               <div className="rounded-md border border-line bg-warn-soft px-4 py-3 text-sm text-ink-secondary">
-                <strong className="text-warn-ink">{existing.ticket_number} already exists.</strong> Confirming will replace its QA data with
+                <strong className="text-warn-ink">{draft.record.ticket_number} already exists.</strong> Confirming will replace its QA data with
                 this report.
               </div>
             )}

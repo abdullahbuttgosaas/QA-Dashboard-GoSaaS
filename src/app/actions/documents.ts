@@ -50,15 +50,15 @@ export async function confirmExtraction(documentId: string, payload: unknown): P
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.rpc("confirm_extraction", {
+  const { data: recordId, error } = await supabase.rpc("confirm_extraction", {
     p_document_id: documentId,
     p_record: parsed.data as never,
   });
   if (error) return { ok: false, error: `Could not save: ${error.message}` };
 
-  const slug = session.profile.public_slug;
-  revalidatePath(`/${slug}`, "layout");
-  redirect(`/${slug}/tickets/${encodeURIComponent(parsed.data.ticket_number)}`);
+  revalidatePath("/qa", "layout");
+  revalidatePath("/manager", "layout");
+  redirect(`/qa/tickets/${recordId}`);
 }
 
 // Discard an unconfirmed upload: marks it discarded and removes the stored file.
@@ -80,6 +80,6 @@ export async function discardDocument(documentId: string): Promise<ActionResult>
   const { error } = await supabase.from("qa_documents").update({ extraction_status: "discarded" }).eq("id", doc.id);
   if (error) return { ok: false, error: `Could not discard: ${error.message}` };
 
-  revalidatePath(`/${session.profile.public_slug}/upload`);
+  revalidatePath("/qa/upload");
   return { ok: true };
 }

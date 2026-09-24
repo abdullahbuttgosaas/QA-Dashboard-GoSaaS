@@ -3,15 +3,18 @@ import type { TicketRow } from "@/components/tickets/ticket-table";
 import type { TicketSummary } from "@/services/records";
 import { passRate } from "@/services/metrics";
 
-export function toTicketRows(tickets: TicketSummary[]): TicketRow[] {
+// ownerNames is given in the team view so each row shows which QA it belongs to.
+export function toTicketRows(tickets: TicketSummary[], ownerNames?: Map<string, string>): TicketRow[] {
   return tickets.map((t) => {
     const m = t.metrics;
     const passed = m?.test_cases_passed ?? 0;
     const failed = m?.test_cases_failed ?? 0;
     return {
+      id: t.id,
       ticket_number: t.ticket_number,
       title: t.title,
       functional_area: t.functional_area,
+      owner: ownerNames?.get(t.owner_id) ?? null,
       qa_status: t.qa_status,
       qa_completed_on: t.qa_completed_on,
       assigned_on: t.assigned_on,

@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { deleteTicket } from "@/app/actions/records";
 import { buttonClass } from "@/components/ui/button";
 
-export function DeleteTicketButton({ recordId, ticketNumber }: { slug: string; recordId: string; ticketNumber: string }) {
+export function DeleteTicketButton({ recordId, ticketNumber }: { recordId: string; ticketNumber: string }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 

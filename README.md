@@ -7,8 +7,14 @@ Stack: Next.js 16 (App Router) · TypeScript · Tailwind v4 · Supabase (Postgre
 
 ## How it works
 
-- **One app, two modes.** `/<slug>` (e.g. `/abdullah`) is a public, read-only dashboard for managers.
-  The owning QA user sees the same pages plus editing controls after signing in with a `@gosaas.ai` account.
+- **Manager experience (`/manager`, `/manager/tickets`, `/manager/tickets/[id]`)** — always read-only, no sign-in.
+  A QA selector (`?qa=<slug>`, or *All QAs*) filters metrics, trends and tickets and is kept while navigating.
+  These pages query Supabase with an anonymous, cookie-free client, so they look identical even when a QA user
+  is signed in, and only public QA profiles are included.
+- **QA experience (`/qa`, `/qa/tickets`, `/qa/tickets/[id]`, `/qa/upload`, `/qa/review/[id]`, `/qa/settings`)** —
+  requires an `@gosaas.ai` email + password sign-in; shows only the signed-in QA's own data plus create/edit/delete,
+  upload and AI extraction. Sign-in lands on `/qa`.
+- Legacy links (`/abdullah`, `/abdullah/tickets`, `/abdullah/tickets/<ticket>`) redirect to the manager pages.
 - **Document-first workflow.** Upload a QA report (PDF, Word, text) → Gemini extracts structured JSON →
   the QA user reviews/edits → confirms → it is saved and the dashboard updates. Manual create/edit is also available.
 - **AI output is never trusted directly.** It is stored in `qa_documents.extraction` and only copied to
@@ -59,7 +65,7 @@ Useful scripts:
 |---|---|
 | `npm test` | Unit tests (Vitest) |
 | `npm run db:test` | Reset local DB and run pgTAP security tests |
-| `npm run audit:local` | End-to-end permissions audit against the local stack + dev server (refuses non-local targets) |
+| `npm run audit:local` | Resets the local DB, then runs the end-to-end permissions audit against the local stack + dev server (refuses non-local targets) |
 | `npm run db:types` | Regenerate `src/types/database.ts` from the local DB |
 | `npm run typecheck` / `npm run lint` | Static checks |
 
@@ -102,7 +108,7 @@ Supabase Authentication (hosted):
 ## Project layout
 
 ```
-src/app/            routes: /[slug] dashboard, tickets, upload, review, settings; /login; /auth; /api
+src/app/            routes: /manager (read-only), /qa (workspace), /login, /auth/signout, /api, legacy /[slug] redirects
 src/app/actions/    server actions (validated with zod, re-check session; RLS enforces again)
 src/components/     UI (dashboard charts, ticket views, record editor)
 src/lib/            env, Supabase clients, auth helpers, formatting

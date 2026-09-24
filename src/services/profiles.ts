@@ -1,7 +1,8 @@
 import "server-only";
 import { cache } from "react";
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import type { Db } from "@/lib/supabase/public";
 import { getViewer, type Viewer } from "@/lib/auth/viewer";
 
 // Columns readable by anonymous visitors (email is intentionally excluded at the DB level).
@@ -18,16 +19,21 @@ export type PublicProfile = {
   reporting_period_anchor: string | null;
 };
 
-export const getProfileBySlug = cache(async (slug: string): Promise<PublicProfile | null> => {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("profiles")
-    .select(PUBLIC_PROFILE_COLUMNS)
-    .eq("public_slug", slug.toLowerCase())
-    .maybeSingle();
+export type QaOption = Pick<PublicProfile, "id" | "display_name" | "public_slug">;
+
+// QAs shown in the manager selector. Uses the caller's client: with the anonymous manager client, RLS returns
+// only public profiles, and email is not even selectable.
+export async function listVisibleQas(db: Db): Promise<QaOption[]> {
+  const { data, error } = await db.from("profiles").select("id, display_name, public_slug").order("display_name");
+  if (error) throw new Error(`Failed to load QA users: ${error.message}`);
+  return data ?? [];
+}
+
+export async function getProfileBySlug(db: Db, slug: string): Promise<PublicProfile | null> {
+  const { data, error } = await db.from("profiles").select(PUBLIC_PROFILE_COLUMNS).eq("public_slug", slug.toLowerCase()).maybeSingle();
   if (error) throw new Error(`Failed to load profile: ${error.message}`);
   return data;
-});
+}
 
 export const getOwnProfile = cache(async (): Promise<PublicProfile | null> => {
   const viewer = await getViewer();
@@ -37,22 +43,12 @@ export const getOwnProfile = cache(async (): Promise<PublicProfile | null> => {
   return data;
 });
 
-export type DashboardContext = {
-  profile: PublicProfile;
-  viewer: Viewer | null;
-  // UI capability flag only. Actual write authorization is enforced by RLS and server actions.
-  canEdit: boolean;
-};
-
-export const getDashboardContext = cache(async (slug: string): Promise<DashboardContext> => {
-  const [profile, viewer] = await Promise.all([getProfileBySlug(slug), getViewer()]);
-  if (!profile) notFound();
-  return { profile, viewer, canEdit: !!viewer && viewer.isQaUser && viewer.userId === profile.id };
+// Gate for every /qa page: signed-in @gosaas.ai user with a profile, otherwise sent to sign in.
+// This is a UI gate only; RLS and server actions enforce write permissions independently.
+export const requireQa = cache(async (nextPath = "/qa"): Promise<{ viewer: Viewer; profile: PublicProfile }> => {
+  const viewer = await getViewer();
+  if (!viewer?.isQaUser) redirect(`/login?next=${encodeURIComponent(nextPath)}`);
+  const profile = await getOwnProfile();
+  if (!profile) redirect(`/login?next=${encodeURIComponent(nextPath)}`);
+  return { viewer, profile };
 });
-
-// For owner-only pages: behaves as "not found" for everyone else.
-export async function requireEditor(slug: string): Promise<DashboardContext & { viewer: Viewer }> {
-  const ctx = await getDashboardContext(slug);
-  if (!ctx.canEdit || !ctx.viewer) notFound();
-  return { ...ctx, viewer: ctx.viewer };
-}

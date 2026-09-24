@@ -8,7 +8,9 @@ import { formatDate, formatPercent } from "@/lib/format";
 import { QA_STATUSES, type QaStatus } from "@/types/qa";
 
 export type TicketRow = {
+  id: string;
   ticket_number: string;
+  owner: string | null; // QA display name, shown in the team view
   title: string;
   functional_area: string | null;
   qa_status: QaStatus;
@@ -27,7 +29,15 @@ const STATUS_LABEL: Record<QaStatus, string> = {
   qa_completed: "QA completed",
 };
 
-export function TicketTable({ slug, rows, filterable = true }: { slug: string; rows: TicketRow[]; filterable?: boolean }) {
+type Props = {
+  rows: TicketRow[];
+  hrefBase: string; // e.g. "/manager/tickets" or "/qa/tickets"
+  linkQuery?: string; // preserved on ticket links, e.g. "?qa=abdullah"
+  showOwner?: boolean;
+  filterable?: boolean;
+};
+
+export function TicketTable({ rows, hrefBase, linkQuery = "", showOwner = false, filterable = true }: Props) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<QaStatus | "all">("all");
 
@@ -36,7 +46,7 @@ export function TicketTable({ slug, rows, filterable = true }: { slug: string; r
     return rows.filter(
       (r) =>
         (status === "all" || r.qa_status === status) &&
-        (!q || `${r.ticket_number} ${r.title} ${r.functional_area ?? ""}`.toLowerCase().includes(q)),
+        (!q || `${r.ticket_number} ${r.title} ${r.functional_area ?? ""} ${r.owner ?? ""}`.toLowerCase().includes(q)),
     );
   }, [rows, query, status]);
 
@@ -48,7 +58,7 @@ export function TicketTable({ slug, rows, filterable = true }: { slug: string; r
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search ticket, title or area"
+            placeholder={showOwner ? "Search ticket, title, area or QA" : "Search ticket, title or area"}
             aria-label="Search tickets"
             className="h-8 w-full max-w-xs rounded-md border border-line-strong bg-surface px-3 text-sm text-ink placeholder:text-ink-muted"
           />
@@ -79,6 +89,7 @@ export function TicketTable({ slug, rows, filterable = true }: { slug: string; r
             <thead className="text-xs text-ink-muted">
               <tr className="border-b border-line">
                 <th className="px-5 py-2.5 font-medium">Ticket</th>
+                {showOwner && <th className="px-3 py-2.5 font-medium">QA</th>}
                 <th className="px-3 py-2.5 font-medium">Status</th>
                 <th className="px-3 py-2.5 font-medium">QA completed</th>
                 <th className="px-3 py-2.5 text-right font-medium">Executed</th>
@@ -90,10 +101,10 @@ export function TicketTable({ slug, rows, filterable = true }: { slug: string; r
             </thead>
             <tbody className="tabular">
               {filtered.map((r) => (
-                <tr key={r.ticket_number} className="border-b border-line last:border-0 hover:bg-surface-muted">
+                <tr key={r.id} className="border-b border-line last:border-0 hover:bg-surface-muted">
                   <td className="max-w-md px-5 py-3">
                     <Link
-                      href={`/${slug}/tickets/${encodeURIComponent(r.ticket_number)}`}
+                      href={`${hrefBase}/${r.id}${linkQuery}`}
                       className="font-medium text-accent hover:underline"
                     >
                       {r.ticket_number}
@@ -103,6 +114,7 @@ export function TicketTable({ slug, rows, filterable = true }: { slug: string; r
                     </div>
                     {r.functional_area && <div className="text-xs text-ink-muted">{r.functional_area}</div>}
                   </td>
+                  {showOwner && <td className="px-3 py-3 whitespace-nowrap text-ink-secondary">{r.owner ?? "—"}</td>}
                   <td className="px-3 py-3">
                     <QaStatusBadge status={r.qa_status} />
                   </td>
