@@ -11,7 +11,6 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const sp = await searchParams;
   const next = safeNextPath(typeof sp.next === "string" ? sp.next : null) ?? undefined;
   if ((await getViewer())?.isQaUser) redirect(next ?? "/");
-  const error = typeof sp.error === "string" ? sp.error : null;
 
   return (
     <main className="flex flex-1 items-center justify-center px-4 py-16">
@@ -25,14 +24,9 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         <div className="rounded-lg border border-line bg-surface p-6">
           <h1 className="text-lg font-semibold text-ink">QA sign in</h1>
           <p className="mt-1 mb-5 text-sm text-ink-muted">
-            For QA team members with a @{serverEnv.allowedEmailDomain()} account. Managers can view dashboards through their shared link
-            without signing in.
+            For QA team members with a @{serverEnv.allowedEmailDomain()} account. We&apos;ll email you a one-time code. Managers can view
+            dashboards through their shared link without signing in.
           </p>
-          {error && (
-            <p role="alert" className="mb-4 rounded-md bg-bad-soft px-3 py-2 text-sm text-bad">
-              {error}
-            </p>
-          )}
           <LoginForm next={next} domain={serverEnv.allowedEmailDomain()} />
         </div>
       </div>

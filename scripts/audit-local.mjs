@@ -32,11 +32,13 @@ const denied = (r) => !!r.error || (Array.isArray(r.data) && r.data.length === 0
 const anon = () => createClient(URL_, PUBLISHABLE, { auth: { persistSession: false } });
 const admin = createClient(URL_, SECRET, { auth: { persistSession: false } });
 
+// Signs in through the same email-OTP verification the login page uses (code, not link),
+// using an admin-generated code so no email is sent.
 async function sessionFor(email) {
   const { data, error } = await admin.auth.admin.generateLink({ type: "magiclink", email });
   if (error) throw error;
   const client = anon();
-  const { data: s, error: e2 } = await client.auth.verifyOtp({ token_hash: data.properties.hashed_token, type: "magiclink" });
+  const { data: s, error: e2 } = await client.auth.verifyOtp({ email, token: data.properties.email_otp, type: "email" });
   if (e2) throw e2;
   return { client, session: s.session };
 }
@@ -100,12 +102,16 @@ const get = (path, cookie) => fetch(APP + path, { redirect: "manual", headers: c
   check("domain", "even admin-created outsider rejected (DB trigger)", !!adm.error, adm.error?.message);
   const form = await fetch(`${APP}/login`, { method: "GET" });
   check("domain", "login page available", form.status === 200);
+  check("auth", "magic-link callback route removed", (await get("/auth/callback?code=x")).status === 404);
+  const wrong = await anon().auth.verifyOtp({ email: "abdullah.butt@gosaas.ai", token: "00000000", type: "email" });
+  check("auth", "wrong OTP code rejected", !!wrong.error);
 }
 
 // ---------------------------------------------------------------------------
 // 3. Authenticated QA user can perform intended writes (own data only)
 // ---------------------------------------------------------------------------
 const { client: qa, session: qaSession } = await sessionFor("abdullah.butt@gosaas.ai");
+check("auth", "email OTP code signs the QA user in", !!qaSession?.access_token);
 const docId = crypto.randomUUID();
 const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
 {
