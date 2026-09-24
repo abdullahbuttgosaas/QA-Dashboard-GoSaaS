@@ -58,6 +58,7 @@ Useful scripts:
 |---|---|
 | `npm test` | Unit tests (Vitest) |
 | `npm run db:test` | Reset local DB and run pgTAP security tests |
+| `npm run audit:local` | End-to-end permissions audit against the local stack + dev server (refuses non-local targets) |
 | `npm run db:types` | Regenerate `src/types/database.ts` from the local DB |
 | `npm run typecheck` / `npm run lint` | Static checks |
 
