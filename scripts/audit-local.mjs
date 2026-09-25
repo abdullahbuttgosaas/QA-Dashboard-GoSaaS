@@ -63,6 +63,14 @@ async function cookieHeader(session) {
 
 const get = (path, cookie) => fetch(APP + path, { redirect: "manual", headers: cookie ? { cookie } : {} });
 
+// Same "today" as the app (UTC date). Fixtures use the latest weekday so weekend runs stay meaningful.
+const TODAY = new Date().toISOString().slice(0, 10);
+const LAST_WEEKDAY = (() => {
+  const d = new Date(`${TODAY}T00:00:00Z`);
+  while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+})();
+
 // ---------------------------------------------------------------------------
 // 1. Public manager view (anonymous) is read-only
 // ---------------------------------------------------------------------------
@@ -215,7 +223,7 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
     owner_id: qa2Id,
     ticket_number: "HIDDEN-1",
     qa_status: "qa_completed",
-    qa_completed_on: new Date().toISOString().slice(0, 10),
+    qa_completed_on: LAST_WEEKDAY,
     data: { schema_version: 1, test_cases: [{ status: "fail" }] },
   });
   check("visibility", "is_public=false QA is still visible to the manager", ((await a.from("profiles").select("id").eq("id", qa2Id)).data ?? []).length === 1);
@@ -243,7 +251,7 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
       ticket_number: "TWO-1",
       title: "Second QA ticket",
       qa_status: "qa_completed",
-      qa_completed_on: new Date().toISOString().slice(0, 10),
+      qa_completed_on: LAST_WEEKDAY,
       data: { schema_version: 1, test_cases: [{ status: "pass" }, { status: "pass" }, { status: "fail" }], bugs: [{ title: "B", severity: "critical" }] },
     })
     .select("id")
@@ -270,7 +278,9 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
   check("manager", "ticket links keep the QA filter", onlyTester.includes(`/manager/tickets/${two.id}?qa=tester`));
 
   const a = anon();
-  const expected = async (owner) => (await a.rpc("qa_metrics_by_period", { p_owner: owner, p_count: 26 })).data.at(-1).test_cases_executed;
+  // Weekly model: current period = last N Monday-Friday weeks (N = QA's setting, 2 for All QAs).
+  const weekly = async (owner, weeks = 2) => (await a.rpc("qa_metrics_by_week", { p_owner: owner, p_count: weeks * 2, p_today: TODAY })).data;
+  const expected = async (owner, weeks = 2) => (await weekly(owner, weeks)).slice(-weeks).reduce((n, w) => n + w.test_cases_executed, 0);
   const testerId = (await a.from("profiles").select("id").eq("public_slug", "tester").single()).data.id;
   const dashAll = await (await get("/manager")).text();
   const dashTester = await (await get("/manager?qa=tester")).text();
@@ -288,7 +298,7 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
   check("manager", "manager can open a ticket of an is_public=false QA (read-only)", hiddenPage.status === 200 && !MUTATION_UI.test(await hiddenPage.text()));
 
   // Every QA can be selected individually, and All QAs is the sum across all of them.
-  const everyone = (await admin.from("profiles").select("id, public_slug")).data;
+  const everyone = (await admin.from("profiles").select("id, public_slug, reporting_period_weeks")).data;
   const allTickets = (await admin.from("qa_records").select("owner_id, ticket_number")).data;
   let sum = 0;
   for (const q of everyone) {
@@ -297,8 +307,8 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
     const others = allTickets.filter((t) => t.owner_id !== q.id).map((t) => t.ticket_number);
     check("manager", `filter to ${q.public_slug} shows exactly that QA's tickets`, own.every((n) => page.includes(n)) && !others.some((n) => page.includes(`>${n}<`)));
     const dash = await (await get(`/manager?qa=${q.public_slug}`)).text();
-    const exp = await expected(q.id);
-    sum += exp;
+    const exp = await expected(q.id, q.reporting_period_weeks);
+    sum += await expected(q.id, 2);
     check("manager", `filter to ${q.public_slug} shows that QA's metrics`, metric(dash, "test_cases_executed") === String(exp), `${metric(dash, "test_cases_executed")} vs ${exp}`);
   }
   check("manager", "All QAs metrics equal the sum over every QA", metric(dashAll, "test_cases_executed") === String(sum), `${metric(dashAll, "test_cases_executed")} vs ${sum}`);
@@ -326,6 +336,53 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
     check("legacy", `${from} redirects to ${to}`, [307, 308].includes(r.status) && r.headers.get("location") === to, `${r.status} ${r.headers.get("location")}`);
   }
   check("legacy", "unknown slug is 404, not a redirect", (await get("/not-a-real-qa")).status === 404);
+
+  // ---------------------------------------------------------------------------
+  // 6. Calendar-week reporting (Monday-Friday)
+  // ---------------------------------------------------------------------------
+  const periodOf = (html) => /data-period="([^"]+)"/.exec(html)?.[1];
+  const teamWeeks = await weekly(null, 2);
+  const expectedPeriod = `${teamWeeks.at(-2).week_start}..${teamWeeks.at(-1).week_end}`;
+  check("weeks", "All QAs shows 'Last 2 weeks', Monday-Friday, never 'days'", /Last 2 weeks/.test(dashAll) && /Monday–Friday/.test(dashAll) && !/Last 14 days|\d+-day/.test(dashAll));
+  check("weeks", "All QAs period = previous + current calendar week", periodOf(dashAll) === expectedPeriod, `${periodOf(dashAll)} vs ${expectedPeriod}`);
+  check("weeks", "current period starts on a Monday and ends on a Friday",
+    new Date(`${teamWeeks.at(-2).week_start}T00:00:00Z`).getUTCDay() === 1 && new Date(`${teamWeeks.at(-1).week_end}T00:00:00Z`).getUTCDay() === 5);
+  check("weeks", "2-week trends use 'Previous week' and 'Current week' buckets", /Previous week/.test(dashAll) && /Current week/.test(dashAll));
+  const back1 = await (await get("/manager?back=1")).text();
+  check("weeks", "previous period = the 2 weeks immediately before", periodOf(back1) === `${teamWeeks[0].week_start}..${teamWeeks[1].week_end}`, periodOf(back1));
+
+  // A QA configured for 4 weeks: manager individual view follows that QA's setting.
+  const testerUser = (await admin.from("profiles").select("id").eq("public_slug", "tester").single()).data;
+  const setWeeks = await qa3.from("profiles").update({ reporting_period_weeks: 4 }).eq("id", testerUser.id).select("id");
+  check("weeks", "QA can change own reporting weeks", !setWeeks.error && setWeeks.data?.length === 1, setWeeks.error?.message);
+  const four = await (await get("/manager?qa=tester")).text();
+  const fourWeeks = await weekly(testerUser.id, 4);
+  check("weeks", "4-week QA shows 'Last 4 weeks' with Week 1-4 buckets", /Last 4 weeks/.test(four) && ["Week 1", "Week 2", "Week 3", "Week 4"].every((w) => four.includes(w)));
+  check("weeks", "4-week period spans 4 Monday-Friday weeks", periodOf(four) === `${fourWeeks.at(-4).week_start}..${fourWeeks.at(-1).week_end}`, periodOf(four));
+  check("weeks", "4-week metrics are the sum of those 4 weeks", metric(four, "test_cases_executed") === String(await expected(testerUser.id, 4)));
+  check("weeks", "All QAs still uses the default 2 weeks", /Last 2 weeks/.test(await (await get("/manager")).text()));
+
+  // QA dashboard uses the same weekly logic (own data only).
+  const qaHome = await (await get("/qa", cookie)).text();
+  const ownWeeks = await weekly(OWNER_ID, 2);
+  check("weeks", "QA dashboard shows the same calendar-week period", /Last 2 weeks/.test(qaHome) && periodOf(qaHome) === `${ownWeeks.at(-2).week_start}..${ownWeeks.at(-1).week_end}`);
+  check("weeks", "QA dashboard metrics are own-data weekly totals", metric(qaHome, "test_cases_executed") === String(await expected(OWNER_ID, 2)));
+  const settings = await (await get("/qa/settings", cookie)).text();
+  check("weeks", "Settings configures the period in weeks", /name="reporting_period_weeks"/.test(settings) && !/reporting_period_days|Period start date/.test(settings));
+
+  // Ticket status vs QA completed date through the real API as the QA user (DB constraint).
+  const bad1 = await qa.from("qa_records").insert({ owner_id: OWNER_ID, ticket_number: "ST-A", qa_status: "assigned", qa_completed_on: LAST_WEEKDAY });
+  check("status", "assigned + completion date rejected", bad1.error?.code === "23514", bad1.error?.code);
+  const bad2 = await qa.from("qa_records").insert({ owner_id: OWNER_ID, ticket_number: "ST-B", qa_status: "in_progress", qa_completed_on: LAST_WEEKDAY });
+  check("status", "in progress + completion date rejected", bad2.error?.code === "23514", bad2.error?.code);
+  const ok = await qa.from("qa_records").insert({ owner_id: OWNER_ID, ticket_number: "ST-C", qa_status: "qa_completed", qa_completed_on: LAST_WEEKDAY });
+  check("status", "QA completed + completion date accepted", !ok.error, ok.error?.message);
+  const back = await qa.from("qa_records").update({ qa_status: "in_progress" }).eq("ticket_number", "ST-C");
+  check("status", "QA completed -> in progress keeping the date rejected", back.error?.code === "23514", back.error?.code);
+  const cleared = await qa.from("qa_records").update({ qa_status: "in_progress", qa_completed_on: null }).eq("ticket_number", "ST-C").select("id");
+  check("status", "QA completed -> in progress with date cleared accepted", !cleared.error && cleared.data?.length === 1, cleared.error?.message);
+  const editPage = await (await get(`/qa/tickets/new`, cookie)).text();
+  check("status", "new-ticket form renders the QA completed date field", /name="qa_completed_on"/.test(editPage));
 }
 
 // ---------------------------------------------------------------------------

@@ -106,9 +106,24 @@ export const QaRecordInputSchema = z
   .refine((r) => r.qa_status !== "qa_completed" || !!r.qa_completed_on, {
     message: "QA completed date is required when status is QA completed",
     path: ["qa_completed_on"],
+  })
+  .refine((r) => r.qa_status === "qa_completed" || !r.qa_completed_on, {
+    message: "Only QA completed tickets can have a QA completed date",
+    path: ["qa_completed_on"],
   });
 
 export type QaRecordInput = z.infer<typeof QaRecordInputSchema>;
+
+// The QA completed date only exists for tickets whose status is QA completed (also enforced by the DB).
+export function completionDateAllowed(status: QaStatus): boolean {
+  return status === "qa_completed";
+}
+
+// Status change in the editor: leaving QA completed clears the completion date so the ticket can never
+// represent an impossible state (the server and database reject it as well).
+export function withStatus<T extends { qa_status: QaStatus; qa_completed_on: string | null }>(record: T, status: QaStatus): T {
+  return { ...record, qa_status: status, qa_completed_on: completionDateAllowed(status) ? record.qa_completed_on : null };
+}
 
 export function emptyQaData(): QaData {
   return QaDataSchema.parse({});

@@ -192,6 +192,10 @@ export function normalizeExtraction(raw: unknown): ReviewDraft {
 
   // Blocking issues first, then the model's own notes, then softer warnings.
   const notes: string[] = [];
+  if (record.qa_status !== "qa_completed" && record.qa_completed_on) {
+    notes.push(`The report gives a QA completed date (${record.qa_completed_on}) but the ticket is not QA completed; the date was not used.`);
+    record.qa_completed_on = null;
+  }
   if (!record.ticket_number) notes.push("No ticket number was found. Enter it before confirming.");
   if (record.qa_status === "qa_completed" && !record.qa_completed_on) {
     notes.push("No QA completion date was found. It is required for period metrics.");

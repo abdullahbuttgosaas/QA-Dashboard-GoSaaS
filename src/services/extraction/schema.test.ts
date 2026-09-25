@@ -42,6 +42,13 @@ describe("normalizeExtraction", () => {
     expect(notes[0]).toMatch(/ticket number/i);
   });
 
+  it("drops a completion date when the extracted status is not QA completed", () => {
+    const { record, notes } = normalizeExtraction({ ticket: { ticket_number: "CHG1", qa_status: "in_progress", qa_completed_on: "2026-09-20" } });
+    expect(record.qa_status).toBe("in_progress");
+    expect(record.qa_completed_on).toBeNull();
+    expect(notes.some((n) => /not QA completed/.test(n))).toBe(true);
+  });
+
   it("flags a completed ticket without a completion date", () => {
     const { notes } = normalizeExtraction({ ticket: { ticket_number: "CHG1", qa_status: "qa_completed" } });
     expect(notes.some((n) => /completion date/i.test(n))).toBe(true);

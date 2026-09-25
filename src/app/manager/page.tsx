@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getManagerScope } from "@/services/manager";
-import { getPeriodMetrics } from "@/services/metrics";
+import { getWeeklyMetrics } from "@/services/metrics";
+import { DEFAULT_REPORTING_WEEKS, clampBack, clampWeeks } from "@/lib/reporting";
 import { listTickets } from "@/services/records";
 import { toTicketRows } from "@/services/tickets-view";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
@@ -12,14 +13,17 @@ export default async function ManagerDashboardPage({ searchParams }: PageProps<"
   const sp = await searchParams;
   const scope = await getManagerScope(sp.qa);
   const ownerId = scope.selected?.id ?? null;
-  const [periods, tickets] = await Promise.all([getPeriodMetrics(scope.db, ownerId), listTickets(scope.db, ownerId)]);
+  // All QAs: the default 2-week period. One QA: that QA's own configured number of weeks.
+  const weeksPerPeriod = clampWeeks(scope.selected?.reporting_period_weeks ?? DEFAULT_REPORTING_WEEKS);
+  const back = clampBack(sp.back);
+  const [weeks, tickets] = await Promise.all([getWeeklyMetrics(scope.db, ownerId, weeksPerPeriod, back), listTickets(scope.db, ownerId)]);
 
   return (
     <DashboardView
       title={scope.selected ? `QA summary · ${scope.selected.display_name}` : "QA summary · All QAs"}
-      periods={periods}
-      back={Number.parseInt(String(sp.back ?? "0"), 10) || 0}
-      periodLabel={scope.selected ? "Current reporting period" : "Last 14 days"}
+      weeks={weeks}
+      weeksPerPeriod={weeksPerPeriod}
+      back={back}
       basePath="/manager"
       ticketsPath="/manager/tickets"
       params={scope.params}

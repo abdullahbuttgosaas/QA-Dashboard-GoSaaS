@@ -19,6 +19,7 @@ export type Database = {
           public_slug: string
           reporting_period_anchor: string | null
           reporting_period_days: number
+          reporting_period_weeks: number
           role: Database["public"]["Enums"]["user_role"]
           updated_at: string
         }
@@ -31,6 +32,7 @@ export type Database = {
           public_slug: string
           reporting_period_anchor?: string | null
           reporting_period_days?: number
+          reporting_period_weeks?: number
           role?: Database["public"]["Enums"]["user_role"]
           updated_at?: string
         }
@@ -43,6 +45,7 @@ export type Database = {
           public_slug?: string
           reporting_period_anchor?: string | null
           reporting_period_days?: number
+          reporting_period_weeks?: number
           role?: Database["public"]["Enums"]["user_role"]
           updated_at?: string
         }
@@ -248,6 +251,29 @@ export type Database = {
           test_cases_passed: number
           tickets_assigned: number
           tickets_completed: number
+        }[]
+      }
+      qa_metrics_by_week: {
+        Args: { p_count?: number; p_owner: string; p_today?: string }
+        Returns: {
+          bugs_critical: number
+          bugs_high: number
+          bugs_low: number
+          bugs_medium: number
+          bugs_total: number
+          retests_failed: number
+          retests_passed: number
+          retests_pending: number
+          retests_total: number
+          test_cases_blocked: number
+          test_cases_executed: number
+          test_cases_failed: number
+          test_cases_passed: number
+          tickets_assigned: number
+          tickets_completed: number
+          week_end: string
+          week_index: number
+          week_start: string
         }[]
       }
       qa_metrics_for_range: {

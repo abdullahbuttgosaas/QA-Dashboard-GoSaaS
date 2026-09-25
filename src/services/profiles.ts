@@ -6,23 +6,22 @@ import type { Db } from "@/lib/supabase/public";
 import { getViewer, type Viewer } from "@/lib/auth/viewer";
 
 // Columns readable by anonymous visitors (email is intentionally excluded at the DB level).
-const PUBLIC_PROFILE_COLUMNS = "id, display_name, public_slug, role, reporting_period_days, reporting_period_anchor" as const;
+const PUBLIC_PROFILE_COLUMNS = "id, display_name, public_slug, role, reporting_period_weeks" as const;
 
 export type PublicProfile = {
   id: string;
   display_name: string;
   public_slug: string;
   role: "qa" | "manager" | "admin";
-  reporting_period_days: number;
-  reporting_period_anchor: string | null;
+  reporting_period_weeks: number; // calendar weeks (Monday-Friday) per reporting period
 };
 
-export type QaOption = Pick<PublicProfile, "id" | "display_name" | "public_slug">;
+export type QaOption = Pick<PublicProfile, "id" | "display_name" | "public_slug" | "reporting_period_weeks">;
 
 // QAs shown in the manager selector. With the anonymous manager client RLS returns every QA profile
 // (QAs cannot hide themselves); email is not granted to anon, so it cannot be selected.
 export async function listVisibleQas(db: Db): Promise<QaOption[]> {
-  const { data, error } = await db.from("profiles").select("id, display_name, public_slug").order("display_name");
+  const { data, error } = await db.from("profiles").select("id, display_name, public_slug, reporting_period_weeks").order("display_name");
   if (error) throw new Error(`Failed to load QA users: ${error.message}`);
   return data ?? [];
 }

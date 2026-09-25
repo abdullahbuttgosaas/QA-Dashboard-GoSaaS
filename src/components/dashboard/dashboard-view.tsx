@@ -1,21 +1,20 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { passRate, type PeriodMetrics } from "@/services/metrics";
+import { passRate } from "@/services/metrics";
+import { MAX_BACK_PERIODS, periodTitle, summarizePeriod, weekBucketLabel, type WeekBucket, type WeekTotals } from "@/lib/reporting";
 import { StatTile } from "@/components/dashboard/stat-tile";
 import { SeverityBar } from "@/components/dashboard/severity-bar";
 import { TrendChart, type TrendPeriod } from "@/components/dashboard/trend-chart";
 import { TicketTable, type TicketRow } from "@/components/tickets/ticket-table";
 import { Card, CardHeader } from "@/components/ui/card";
 import { buttonClass } from "@/components/ui/button";
-import { formatPercent, formatRange, formatShortDate } from "@/lib/format";
-
-const TREND_WINDOW = 8;
+import { formatPercent, formatRange } from "@/lib/format";
 
 type Props = {
   title: string;
-  periods: PeriodMetrics[]; // oldest first
+  weeks: WeekBucket[]; // 2 x weeksPerPeriod Monday-Friday buckets, oldest first (comparison period, then current)
+  weeksPerPeriod: number;
   back: number; // 0 = current period
-  periodLabel: string;
   basePath: string; // dashboard path, e.g. "/manager" or "/qa"
   ticketsPath: string; // e.g. "/manager/tickets"
   params?: Record<string, string>; // query params to preserve (e.g. { qa: "abdullah" })
@@ -25,7 +24,7 @@ type Props = {
   ticketActions?: ReactNode; // e.g. QA "New ticket" button; never passed by manager pages
 };
 
-function rate(p: PeriodMetrics) {
+function rate(p: WeekTotals) {
   return passRate(p.test_cases_passed, p.test_cases_failed);
 }
 
@@ -35,24 +34,22 @@ function withParams(path: string, params: Record<string, string>, extra: Record<
 }
 
 // Shared by the manager (read-only) and QA dashboards. Contains no mutation controls itself.
-export function DashboardView({ title, periods, back: requestedBack, periodLabel, basePath, ticketsPath, params = {}, rows, showOwner, toolbar, ticketActions }: Props) {
-  const back = Math.min(Math.max(requestedBack, 0), periods.length - 1);
-  const idx = periods.length - 1 - back;
-  const current = periods[idx];
-  const previous = idx > 0 ? periods[idx - 1] : null;
-  const trendWindow = periods.slice(Math.max(0, idx - TREND_WINDOW + 1), idx + 1);
+export function DashboardView({ title, weeks, weeksPerPeriod, back, basePath, ticketsPath, params = {}, rows, showOwner, toolbar, ticketActions }: Props) {
+  const period = summarizePeriod(weeks, weeksPerPeriod);
+  const { current, previous } = period;
+  const trendWindow = period.currentWeeks;
 
   const currentRate = rate(current);
   const previousRate = previous ? rate(previous) : null;
   const rateDelta =
     currentRate !== null && previousRate !== null ? Math.round(currentRate * 100) - Math.round(previousRate * 100) : null;
-  const d = (key: keyof PeriodMetrics) => (previous ? (current[key] as number) - (previous[key] as number) : null);
+  const d = (key: keyof WeekTotals) => (previous ? current[key] - previous[key] : null);
 
-  const trendPeriods: TrendPeriod[] = trendWindow.map((p) => ({
-    label: formatShortDate(p.period_start),
-    range: formatRange(p.period_start, p.period_end),
+  const trendPeriods: TrendPeriod[] = trendWindow.map((w, i) => ({
+    label: weekBucketLabel(i, weeksPerPeriod),
+    range: `${weekBucketLabel(i, weeksPerPeriod)} · ${formatRange(w.week_start, w.week_end)}`,
   }));
-  const col = (key: keyof PeriodMetrics) => trendWindow.map((p) => p[key] as number);
+  const col = (key: keyof WeekTotals) => trendWindow.map((w) => w[key]);
   const query = Object.keys(params).length ? `?${new URLSearchParams(params)}` : "";
 
   return (
@@ -60,8 +57,8 @@ export function DashboardView({ title, periods, back: requestedBack, periodLabel
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-ink">{title}</h1>
-          <p className="text-sm text-ink-muted">
-            {back === 0 ? periodLabel : "Earlier period"} · {formatRange(current.period_start, current.period_end)}
+          <p className="text-sm text-ink-muted" data-period={`${period.start}..${period.end}`}>
+            {periodTitle(weeksPerPeriod, back)} · {formatRange(period.start, period.end)} · Monday–Friday
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -69,8 +66,8 @@ export function DashboardView({ title, periods, back: requestedBack, periodLabel
           <nav className="flex items-center gap-2" aria-label="Reporting period">
             <Link
               href={withParams(basePath, params, { back: String(back + 1) })}
-              aria-disabled={idx === 0}
-              className={buttonClass("secondary", "sm", idx === 0 ? "pointer-events-none opacity-50" : undefined)}
+              aria-disabled={back >= MAX_BACK_PERIODS}
+              className={buttonClass("secondary", "sm", back >= MAX_BACK_PERIODS ? "pointer-events-none opacity-50" : undefined)}
             >
               ← Previous period
             </Link>
@@ -142,7 +139,10 @@ export function DashboardView({ title, periods, back: requestedBack, periodLabel
       </section>
 
       <Card>
-        <CardHeader title="Trends" description={`Last ${trendWindow.length} reporting periods`} />
+        <CardHeader
+          title="Trends"
+          description={`${trendWindow.length} calendar week${trendWindow.length === 1 ? "" : "s"} · Monday–Friday · compared with the ${weeksPerPeriod === 1 ? "week" : `${weeksPerPeriod} weeks`} before`}
+        />
         <div className="grid gap-x-8 gap-y-6 p-5 md:grid-cols-2">
           <TrendChart
             title="Tickets QA completed"

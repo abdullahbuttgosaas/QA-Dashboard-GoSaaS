@@ -24,15 +24,21 @@ Stack: Next.js 16 (App Router) · TypeScript · Tailwind v4 · Supabase (Postgre
 
 | Table | Purpose |
 |---|---|
-| `profiles` | 1:1 with `auth.users`. Display name, slug (manager filter), role, reporting-period settings. (`is_public` is legacy and unused.) |
+| `profiles` | 1:1 with `auth.users`. Display name, slug (manager filter), role, `reporting_period_weeks`. (`is_public`, `reporting_period_days`, `reporting_period_anchor` are legacy and unused.) |
 | `qa_records` | One row per ticket. Relational columns for lookup/bucketing + `data` JSONB (requirements, test cases, bugs, retests, evidence, custom fields/sections). Shape: `src/types/qa.ts`. |
 | `qa_documents` | Uploaded report files (Supabase Storage bucket `qa-reports`) and AI extraction/review state. |
 
-Metrics are **derived** from the JSONB (`qa_record_metrics` view, `qa_metrics_for_range()`, `qa_metrics_by_period()`),
+Metrics are **derived** from the JSONB (`qa_record_metrics` view, `qa_metrics_for_range()`, `qa_metrics_by_week()`),
 never entered as aggregates. Pass rate = passed ÷ (passed + failed); blocked/not-run are reported separately.
 
-**Reporting periods** are configurable per user in Settings: period length (default 14 days) and an optional
-start date. With no start date, periods are rolling windows ending today.
+**Reporting periods** are complete calendar weeks, **Monday–Friday** (weekends never count). A period is N weeks
+ending with the current week (default 2 = previous + current week), compared with the N weeks immediately before.
+Trends show one bucket per week ("Previous week" / "Current week", or "Week 1..N"). Each QA sets N (1–12) in
+Settings; the manager's All-QAs view uses 2 weeks, an individual QA view uses that QA's setting. Buckets come from
+`qa_metrics_by_week()`; each metric keeps its own date (assigned, completed, executed, found, retest date).
+
+**Ticket status and QA completed date:** only *QA completed* tickets have (and require) a completion date.
+Assigned / In progress tickets cannot have one — enforced by the editor, server validation and a DB constraint.
 
 ## Security model
 

@@ -26,19 +26,23 @@ type InputProps = {
   placeholder?: string;
   type?: "text" | "date";
   className?: string;
+  disabled?: boolean;
+  name?: string;
 };
 
-export function TextField({ label, value, onChange, error, hint, placeholder, type = "text", className }: InputProps) {
+export function TextField({ label, value, onChange, error, hint, placeholder, type = "text", className, disabled, name }: InputProps) {
   return (
     <div className={className}>
       <Label label={label} error={error} hint={hint}>
         <input
           type={type}
+          name={name}
           value={value}
           placeholder={placeholder}
+          disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
           aria-invalid={!!error}
-          className={cn(control, "h-9", error ? "border-bad" : "border-line-strong")}
+          className={cn(control, "h-9 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-ink-muted", error ? "border-bad" : "border-line-strong")}
         />
       </Label>
     </div>

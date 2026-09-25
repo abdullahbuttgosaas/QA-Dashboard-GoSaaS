@@ -11,6 +11,8 @@ import {
   QA_STATUSES,
   RETEST_RESULTS,
   TEST_CASE_STATUSES,
+  completionDateAllowed,
+  withStatus,
   type Bug,
   type QaRecordInput,
   type Retest,
@@ -182,7 +184,7 @@ export function RecordEditor({ initial, submitLabel, onSubmit, cancelHref, notes
             label="QA status"
             value={record.qa_status}
             options={opts(QA_STATUSES, labels.qa_status)}
-            onChange={(v) => set({ qa_status: v || "assigned" })}
+            onChange={(v) => setRecord((r) => withStatus(r, v || "assigned"))}
           />
           <TextField
             label="Assigned on"
@@ -192,10 +194,13 @@ export function RecordEditor({ initial, submitLabel, onSubmit, cancelHref, notes
             error={fieldErrors.assigned_on}
           />
           <TextField
-            label={record.qa_status === "qa_completed" ? "QA completed on *" : "QA completed on"}
+            label={completionDateAllowed(record.qa_status) ? "QA completed on *" : "QA completed on"}
+            name="qa_completed_on"
             type="date"
             value={record.qa_completed_on ?? ""}
             onChange={(v) => set({ qa_completed_on: v || null })}
+            disabled={!completionDateAllowed(record.qa_status)}
+            hint={completionDateAllowed(record.qa_status) ? undefined : "Only available when the status is QA completed"}
             error={fieldErrors.qa_completed_on}
           />
           <TextArea label="Summary" value={d.summary} onChange={(v) => setData({ summary: v })} className="sm:col-span-2 lg:col-span-3" />

@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { updateSettings } from "@/app/actions/profile";
 import { buttonClass } from "@/components/ui/button";
 import { Label } from "@/components/tickets/editor/fields";
+import { MAX_REPORTING_WEEKS } from "@/lib/reporting";
 import type { PublicProfile } from "@/services/profiles";
 
 const input = "h-9 w-full rounded-md border border-line-strong bg-surface px-3 text-sm text-ink";
@@ -44,22 +45,18 @@ export function SettingsForm({ profile, siteUrl, saved }: { profile: PublicProfi
       <fieldset className="space-y-4">
         <legend className="text-sm font-semibold text-ink">Reporting period</legend>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Label label="Period length (days)" error={errors.reporting_period_days}>
-            <input
-              name="reporting_period_days"
-              type="number"
-              min={1}
-              max={92}
-              defaultValue={profile.reporting_period_days}
-              className={input}
-            />
-          </Label>
           <Label
-            label="Period start date (optional)"
-            error={errors.reporting_period_anchor}
-            hint="Any date a period starts on, e.g. a sprint start. Leave empty for a rolling window ending today."
+            label="Period length"
+            error={errors.reporting_period_weeks}
+            hint="Complete calendar weeks (Monday–Friday) ending with the current week. Weekends are not counted."
           >
-            <input name="reporting_period_anchor" type="date" defaultValue={profile.reporting_period_anchor ?? ""} className={input} />
+            <select name="reporting_period_weeks" defaultValue={String(profile.reporting_period_weeks)} className={input}>
+              {Array.from({ length: MAX_REPORTING_WEEKS }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={n}>
+                  {n === 1 ? "1 week (current week)" : n === 2 ? "2 weeks (previous + current week)" : `${n} weeks`}
+                </option>
+              ))}
+            </select>
           </Label>
         </div>
       </fieldset>

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { MAX_REPORTING_WEEKS } from "@/lib/reporting";
 import { requireQaSession, zodFieldErrors, type ActionResult } from "./shared";
 
 const SettingsSchema = z.object({
@@ -13,12 +14,7 @@ const SettingsSchema = z.object({
     .trim()
     .toLowerCase()
     .regex(/^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$/, "Use 1–40 lowercase letters, numbers or hyphens"),
-  reporting_period_days: z.coerce.number().int().min(1).max(92),
-  reporting_period_anchor: z
-    .string()
-    .trim()
-    .transform((v) => v || null)
-    .pipe(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date").nullable()),
+  reporting_period_weeks: z.coerce.number().int().min(1, "Choose 1–12 weeks").max(MAX_REPORTING_WEEKS, "Choose 1–12 weeks"),
 });
 
 export async function updateSettings(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
@@ -28,8 +24,7 @@ export async function updateSettings(_prev: ActionResult | null, form: FormData)
   const parsed = SettingsSchema.safeParse({
     display_name: form.get("display_name"),
     public_slug: form.get("public_slug"),
-    reporting_period_days: form.get("reporting_period_days"),
-    reporting_period_anchor: form.get("reporting_period_anchor") ?? "",
+    reporting_period_weeks: form.get("reporting_period_weeks"),
   });
   if (!parsed.success) {
     return { ok: false, error: "Please fix the highlighted fields.", fieldErrors: zodFieldErrors(parsed.error) };
