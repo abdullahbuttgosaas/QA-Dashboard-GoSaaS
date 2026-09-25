@@ -135,11 +135,14 @@ export function BugsSection({ data }: { data: QaData }) {
       ) : (
         <ul className="divide-y divide-line">
           {bugs.map((b, i) => (
-            <li key={i} className="space-y-2 px-5 py-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-xs text-ink-muted">{b.ref || `#${i + 1}`}</span>
-                <span className="text-sm font-medium text-ink">{b.title || "Untitled bug"}</span>
-                <span className="ml-auto flex gap-2">
+            <li key={i} className="min-w-0 space-y-2 px-5 py-4" data-bug-item>
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="min-w-0 font-mono text-xs text-ink-muted wrap-anywhere">{b.ref || `#${i + 1}`}</span>
+                {/* min-w-0 + wrap-anywhere: long unbroken identifiers wrap instead of widening the card. */}
+                <span className="min-w-0 flex-1 basis-48 text-sm font-medium text-ink wrap-anywhere" data-bug-title>
+                  {b.title || "Untitled bug"}
+                </span>
+                <span className="ml-auto flex shrink-0 flex-wrap gap-2">
                   <SeverityBadge severity={b.severity} />
                   <BugStatusBadge status={b.status} />
                 </span>
@@ -151,8 +154,8 @@ export function BugsSection({ data }: { data: QaData }) {
                   <Steps steps={b.steps_to_reproduce} />
                 </div>
               )}
-              <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-ink-muted">
-                {b.test_case_refs.length > 0 && <span>Test cases: {b.test_case_refs.join(", ")}</span>}
+              <div className="flex min-w-0 flex-wrap gap-x-6 gap-y-1 text-xs text-ink-muted">
+                {b.test_case_refs.length > 0 && <span className="min-w-0 wrap-anywhere">Test cases: {b.test_case_refs.join(", ")}</span>}
                 {b.found_on && <span>Found {formatDate(b.found_on)}</span>}
               </div>
             </li>

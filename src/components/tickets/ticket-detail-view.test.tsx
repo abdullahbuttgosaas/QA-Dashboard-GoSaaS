@@ -11,6 +11,7 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+const BUG_TITLE = "Prospective_Supplier_Registration_Approval_Group_missing_Ryan_Approver_in_GKOS_BPM_Approval_Groups_Configuration";
 const LONG = "https://example.com/" + "x".repeat(400) + "/screenshot-with-a-very-long-unbroken-identifier.png";
 
 const record = {
@@ -25,7 +26,10 @@ const record = {
   source_document_id: null,
   created_at: "2026-09-25T00:00:00Z",
   updated_at: "2026-09-25T00:00:00Z",
-  data: QaDataSchema.parse({ evidence: [{ description: LONG, location: "Image 1" }] }),
+  data: QaDataSchema.parse({
+    evidence: [{ description: LONG, location: "Image 1" }],
+    bugs: [{ ref: "Bug 1", title: BUG_TITLE, severity: "high", status: "open" }],
+  }),
 } as QaRecord;
 
 const documents: RecordDocument[] = [
@@ -99,6 +103,20 @@ describe("evidence text", () => {
     expect(item).toMatch(/<span class="[^"]*min-w-0[^"]*flex-1[^"]*wrap-anywhere[^"]*">https:\/\/example.com\/x{400}/);
     expect(item).toContain(LONG); // full text, not truncated
     expect(item).not.toMatch(/truncate|overflow-x-auto|overflow-hidden/);
+  });
+});
+
+describe("bug title", () => {
+  it("wraps a long unbroken identifier inside the card (full title, no truncation, no scroll)", async () => {
+    const html = await render("/manager/documents");
+    const title = /<span class="([^"]*)" data-bug-title="true">([^<]*)<\/span>/.exec(html);
+    expect(title?.[2]).toBe(BUG_TITLE);
+    expect(title?.[1]).toMatch(/\bmin-w-0\b/);
+    expect(title?.[1]).toMatch(/\bwrap-anywhere\b/);
+    expect(title?.[1]).not.toMatch(/truncate|overflow-hidden|overflow-x-auto|whitespace-nowrap/);
+    const item = /<li[^>]*data-bug-item[^>]*>/.exec(html)?.[0] ?? "";
+    expect(item).toMatch(/min-w-0/);
+    expect(html).toMatch(/<span class="ml-auto flex shrink-0 flex-wrap gap-2">/); // badges keep size, may wrap
   });
 });
 

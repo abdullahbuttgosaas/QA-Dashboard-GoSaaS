@@ -430,6 +430,53 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
 }
 
 // ---------------------------------------------------------------------------
+// 8. Regression: download filenames (no double encoding) and long bug titles
+// ---------------------------------------------------------------------------
+{
+  const cookie = await cookieHeader(qaSession);
+  const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  const BUG_TITLE = "Prospective_Supplier_Registration_Approval_Group_missing_Ryan_Approver_in_GKOS_BPM_Approval_Groups_Configuration";
+  // Same path sanitisation as the upload form; file_name keeps the original name.
+  async function confirmedReport(fileName, ticketNumber) {
+    const id = crypto.randomUUID();
+    const path = `${OWNER_ID}/${id}/${fileName.replace(/[^\w.\- ]+/g, "_")}`;
+    const up = await qa.storage.from(BUCKET).upload(path, new Blob(["x"], { type: DOCX }), { contentType: DOCX });
+    if (up.error) throw up.error;
+    await qa.from("qa_documents").insert({ id, owner_id: OWNER_ID, storage_path: path, file_name: fileName, mime_type: DOCX, size_bytes: 1 });
+    await qa.from("qa_documents").update({ extraction_status: "ready_for_review" }).eq("id", id);
+    const { data: recordId, error } = await qa.rpc("confirm_extraction", {
+      p_document_id: id,
+      p_record: { ticket_number: ticketNumber, qa_status: "qa_completed", qa_completed_on: LAST_WEEKDAY, data: { schema_version: 1, bugs: [{ ref: "Bug 1", title: BUG_TITLE, severity: "high", status: "open" }] } },
+    });
+    if (error) throw error;
+    return { id, recordId };
+  }
+  const reports = [
+    ["CHG0045893 - Break Fix QA (1).docx", "REG-PARENS"],
+    ["CHG0046926 - QA Report.docx", "REG-PLAIN"],
+  ];
+  for (const [fileName, ticket] of reports) {
+    const { id, recordId } = await confirmedReport(fileName, ticket);
+    for (const [who, base, c] of [["manager", "/manager", undefined], ["QA", "/qa", cookie]]) {
+      const redirect = await get(`${base}/documents/${id}?download=1`, c);
+      const res = await fetch(redirect.headers.get("location") ?? "");
+      const header = res.headers.get("content-disposition") ?? "";
+      const star = /filename\*=UTF-8''([^;]+)/.exec(header)?.[1] ?? "";
+      const plain = /filename=([^;]+)/.exec(header)?.[1] ?? "";
+      check("filename", `${who}: "${fileName}" downloads with the exact original name`, decodeURIComponent(star) === fileName && decodeURIComponent(plain) === fileName, header);
+      check("filename", `${who}: "${fileName}" has no %28/%29/%2528/%2529 artifacts`, !/%28|%29|%2528|%2529|%25/i.test(header), header);
+      const open = await fetch((await get(`${base}/documents/${id}`, c)).headers.get("location") ?? "");
+      check("filename", `${who}: "${fileName}" Open still has no attachment header`, open.status === 200 && !/attachment/i.test(open.headers.get("content-disposition") ?? ""));
+
+      const html = await (await get(`${base}/tickets/${recordId}`, c)).text();
+      const title = /<span class="([^"]*)" data-bug-title="true">([^<]*)<\/span>/.exec(html);
+      check("bug-title", `${who}: long bug title rendered in full and set to wrap (${ticket})`, title?.[2] === BUG_TITLE && /min-w-0/.test(title?.[1] ?? "") && /wrap-anywhere/.test(title?.[1] ?? "") && !/truncate|overflow-hidden|overflow-x-auto/.test(title?.[1] ?? ""));
+      check("bug-title", `${who}: ticket detail ${who === "manager" ? "has no edit/delete" : "keeps Edit/Delete"} (${ticket})`, who === "manager" ? !/>Edit<|>Delete</.test(html) : />Edit</.test(html) && />Delete</.test(html));
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 const failed = results.filter((r) => !r.pass);
 for (const r of results) console.log(`${r.pass ? "PASS" : "FAIL"}  [${r.area}] ${r.name}${!r.pass && r.detail ? ` — ${r.detail}` : ""}`);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
