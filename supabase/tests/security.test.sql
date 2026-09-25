@@ -74,21 +74,9 @@ select throws_ok($$ select public.confirm_extraction('00000000-0000-4000-9000-00
   '42501', null, 'manager cannot confirm extraction');
 select is((select array_agg(name order by name)::text from storage.objects where bucket_id = 'qa-reports'),
   '{00000000-0000-4000-8000-000000000002/d2/final.pdf}', 'manager can read confirmed report files only (no drafts)');
-select throws_ok($$ -- QA 3: calendar fixtures with fixed dates around Friday 2026-09-25.
-insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data)
-values ('00000000-0000-4000-8000-000000000003', '00000000-0000-0000-0000-000000000000',
-        'authenticated', 'authenticated', 'calendar.qa@gosaas.ai', '{}');
-insert into public.qa_records (owner_id, ticket_number, qa_status, assigned_on, qa_completed_on, data) values
-  ('00000000-0000-4000-8000-000000000003', 'CAL-MON',     'qa_completed', '2026-08-31', '2026-09-14', '{"test_cases":[{"status":"pass"}]}'),
-  ('00000000-0000-4000-8000-000000000003', 'CAL-FRI',     'qa_completed', null,         '2026-09-25', '{"test_cases":[{"status":"pass"},{"status":"fail"}],"retests":[{"result":"pass"}]}'),
-  ('00000000-0000-4000-8000-000000000003', 'CAL-SUN',     'qa_completed', '2026-09-13', '2026-09-13', '{"test_cases":[{"status":"pass"}]}'),
-  ('00000000-0000-4000-8000-000000000003', 'CAL-SAT-IN',  'qa_completed', null,         '2026-09-19', '{"test_cases":[{"status":"pass"}]}'),
-  ('00000000-0000-4000-8000-000000000003', 'CAL-SAT-OUT', 'qa_completed', '2026-09-26', '2026-09-26', '{"test_cases":[{"status":"fail"}]}'),
-  ('00000000-0000-4000-8000-000000000003', 'CAL-OPEN',    'in_progress',  '2026-09-22', null,
-   '{"test_cases":[{"status":"blocked","executed_on":"2026-09-11"}],"bugs":[{"severity":"high","found_on":"2026-09-04"}]}');
-
-insert into storage.objects (bucket_id, name) values ('qa-reports', '00000000-0000-4000-8000-000000000001/x/y.pdf') $$,
-  '42501', null, 'manager cannot upload files');
+-- Runs as anon (set above): only the upload itself, rejected by the storage RLS policy (not a missing grant).
+select throws_ok($$ insert into storage.objects (bucket_id, name) values ('qa-reports', '00000000-0000-4000-8000-000000000001/x/y.pdf') $$,
+  '42501', 'new row violates row-level security policy for table "objects"', 'manager cannot upload files');
 select is((select test_cases_executed from public.qa_metrics_for_range('00000000-0000-4000-8000-000000000002', current_date - 30, current_date)), 3,
   'manager can filter metrics to one QA');
 select is(
