@@ -4,8 +4,8 @@ import type { QaRecord, RecordDocument } from "@/services/records";
 import { passRate } from "@/services/metrics";
 import { QaStatusBadge } from "@/components/ui/badges";
 import { Card, CardHeader } from "@/components/ui/card";
-import { buttonClass } from "@/components/ui/button";
 import { StatTile } from "@/components/dashboard/stat-tile";
+import { ReportActions } from "@/components/tickets/report-actions";
 import {
   BugsSection,
   CustomSections,
@@ -98,21 +98,14 @@ export function TicketDetailView({ record, documents, backHref, documentsBase, o
             ) : (
               <ul className="divide-y divide-line">
                 {documents.map((doc) => (
-                  <li key={doc.id} className="px-5 py-3">
-                    <div className="truncate text-sm font-medium text-ink" title={doc.file_name}>
+                  <li key={doc.id} className="min-w-0 px-5 py-3">
+                    <div className="text-sm font-medium text-ink wrap-anywhere" title={doc.file_name}>
                       {doc.file_name}
                     </div>
                     <div className="text-xs text-ink-muted">
                       {formatBytes(doc.size_bytes)} · uploaded {formatDate(doc.created_at)}
                     </div>
-                    <div className="mt-2 flex gap-2">
-                      <a href={`${documentsBase}/${doc.id}`} target="_blank" rel="noopener" className={buttonClass("secondary", "sm")}>
-                        Open
-                      </a>
-                      <a href={`${documentsBase}/${doc.id}?download=1`} className={buttonClass("ghost", "sm")}>
-                        Download
-                      </a>
-                    </div>
+                    <ReportActions href={`${documentsBase}/${doc.id}`} fileName={doc.file_name} />
                   </li>
                 ))}
               </ul>

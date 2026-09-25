@@ -8,7 +8,7 @@ import type { QaData } from "@/types/qa";
 function Prose({ children }: { children: string }) {
   const parts = children.split(/(\*\*[^*\n]+\*\*)/g);
   return (
-    <div className="text-sm leading-relaxed whitespace-pre-wrap text-ink-secondary">
+    <div className="min-w-0 text-sm leading-relaxed whitespace-pre-wrap text-ink-secondary wrap-anywhere">
       {parts.map((part, i) =>
         /^\*\*[^*\n]+\*\*$/.test(part) ? (
           <strong key={i} className="font-semibold text-ink">
@@ -24,16 +24,16 @@ function Prose({ children }: { children: string }) {
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div>
-      <div className="text-xs font-medium text-ink-muted">{label}</div>
-      <div className="mt-0.5 text-sm text-ink">{children}</div>
+    <div className="min-w-0">
+      <div className="text-xs font-medium text-ink-muted wrap-anywhere">{label}</div>
+      <div className="mt-0.5 text-sm text-ink wrap-anywhere">{children}</div>
     </div>
   );
 }
 
 function Steps({ steps }: { steps: string[] }) {
   return (
-    <ol className="list-decimal space-y-0.5 pl-5 text-sm text-ink-secondary">
+    <ol className="min-w-0 list-decimal space-y-0.5 pl-5 text-sm text-ink-secondary wrap-anywhere">
       {steps.map((s, i) => (
         <li key={i} className="whitespace-pre-wrap">
           {s}
@@ -65,7 +65,7 @@ export function RequirementsSection({ data }: { data: QaData }) {
         {data.requirements.map((r, i) => (
           <li key={i} className="flex gap-4 px-5 py-3 text-sm">
             <span className="max-w-[10rem] shrink-0 truncate font-mono text-xs text-ink-muted">{r.ref || `#${i + 1}`}</span>
-            <span className="whitespace-pre-wrap text-ink-secondary">{r.text}</span>
+            <span className="min-w-0 flex-1 whitespace-pre-wrap text-ink-secondary wrap-anywhere">{r.text}</span>
           </li>
         ))}
       </ul>
@@ -205,9 +205,9 @@ export function EvidenceSection({ data }: { data: QaData }) {
       <CardHeader title="Evidence" description="Screenshots and attachments referenced in the QA report" />
       <ul className="divide-y divide-line">
         {data.evidence.map((e, i) => (
-          <li key={i} className="flex gap-4 px-5 py-3 text-sm">
-            <span className="w-24 shrink-0 text-xs text-ink-muted">{e.location || `#${i + 1}`}</span>
-            <span className="whitespace-pre-wrap text-ink-secondary">{e.description}</span>
+          <li key={i} className="flex min-w-0 flex-col gap-1 px-5 py-3 text-sm sm:flex-row sm:gap-4" data-evidence-item>
+            <span className="shrink-0 text-xs text-ink-muted wrap-anywhere sm:w-24">{e.location || `#${i + 1}`}</span>
+            <span className="min-w-0 flex-1 whitespace-pre-wrap text-ink-secondary wrap-anywhere">{e.description}</span>
           </li>
         ))}
       </ul>

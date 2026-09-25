@@ -32,13 +32,17 @@ export async function getOwnDocument(db: Db, ownerId: string, id: string): Promi
   return data;
 }
 
-// Short-lived link. Storage RLS decides whether the caller (anonymous manager or QA user) may read the object.
+// Short-lived (5 min) signed link. Storage RLS decides whether the caller (anonymous manager or QA user) may read
+// the object; the bucket itself stays private.
+// - open:     no Content-Disposition, so the browser shows the file inline when it can (e.g. PDF). Formats browsers
+//             cannot render (e.g. .docx) are downloaded by the browser itself.
+// - download: Content-Disposition: attachment with the original upload's file name.
 export async function createDocumentUrl(db: Db, documentId: string, download = false): Promise<string | null> {
-  const { data: doc } = await db.from("qa_documents").select("storage_path").eq("id", documentId).maybeSingle();
+  const { data: doc } = await db.from("qa_documents").select("storage_path, file_name").eq("id", documentId).maybeSingle();
   if (!doc) return null;
   const { data, error } = await db.storage
     .from(REPORTS_BUCKET)
-    .createSignedUrl(doc.storage_path, 60 * 5, download ? { download: true } : undefined);
+    .createSignedUrl(doc.storage_path, 60 * 5, download ? { download: doc.file_name || true } : undefined);
   if (error || !data) return null;
   return data.signedUrl;
 }

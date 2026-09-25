@@ -386,6 +386,50 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
 }
 
 // ---------------------------------------------------------------------------
+// 7. Ticket detail: QA report actions and long evidence text (manager + QA)
+// ---------------------------------------------------------------------------
+{
+  const cookie = await cookieHeader(qaSession);
+  const reportTicket = (await admin.from("qa_records").select("id").eq("ticket_number", "AUDIT-2").single()).data.id;
+  const LONG = "https://example.com/" + "x".repeat(400) + "/very-long-unbroken-evidence-identifier";
+  const evid = await qa
+    .from("qa_records")
+    .insert({ owner_id: OWNER_ID, ticket_number: "EVID-1", qa_status: "assigned", data: { schema_version: 1, evidence: [{ description: LONG, location: "Image 1" }] } })
+    .select("id")
+    .single();
+  const tag = (html, action) => new RegExp(`<a[^>]*data-report-action="${action}"[^>]*>`).exec(html)?.[0] ?? "";
+  const cls = (t) => /class="([^"]*)"/.exec(t)?.[1];
+
+  for (const [who, base, c] of [["manager", "/manager", undefined], ["QA", "/qa", cookie]]) {
+    const html = await (await get(`${base}/tickets/${reportTicket}`, c)).text();
+    const open = tag(html, "open");
+    const download = tag(html, "download");
+    check("report", `${who}: Open targets a new tab`, open.includes('target="_blank"') && open.includes(`href="${base}/documents/${docId}"`), open);
+    check("report", `${who}: Download uses download behaviour`, /\sdownload="[^"]+"/.test(download) && download.includes(`href="${base}/documents/${docId}?download=1"`) && !download.includes("target="));
+    check("report", `${who}: Open and Download share the same button styling`, !!cls(open) && cls(open) === cls(download) && /border/.test(cls(open)));
+
+    const openRedirect = await get(`${base}/documents/${docId}`, c);
+    const openUrl = openRedirect.headers.get("location") ?? "";
+    const openFile = await fetch(openUrl);
+    check("report", `${who}: Open serves the file inline (no attachment header)`, openRedirect.status === 307 && openFile.status === 200 && !/attachment/i.test(openFile.headers.get("content-disposition") ?? ""));
+    const dlRedirect = await get(`${base}/documents/${docId}?download=1`, c);
+    const dlFile = await fetch(dlRedirect.headers.get("location") ?? "");
+    const disposition = dlFile.headers.get("content-disposition") ?? "";
+    check("report", `${who}: Download is an attachment with the original file name`, dlFile.status === 200 && /attachment/i.test(disposition) && disposition.includes("audit-report.txt"), disposition);
+    check("report", `${who}: file is served via a short-lived signed URL (bucket stays private)`, /\/object\/sign\//.test(openUrl) && /token=/.test(openUrl));
+
+    const ev = await (await get(`${base}/tickets/${evid.data.id}`, c)).text();
+    const item = /<li[^>]*data-evidence-item[^>]*>.*?<\/li>/.exec(ev)?.[0] ?? "";
+    check("evidence", `${who}: long evidence text is rendered in full`, item.includes(LONG));
+    check("evidence", `${who}: long evidence text wraps inside its card`, /<span class="[^"]*min-w-0[^"]*wrap-anywhere[^"]*">https:\/\/example.com/.test(item) && !/truncate|overflow-x-auto/.test(item));
+  }
+  const mgr = await (await get(`/manager/tickets/${reportTicket}`, cookie)).text();
+  check("report", "manager ticket detail stays read-only (even signed in)", !/>Edit<|>Delete<|Upload QA report|Sign out/.test(mgr) && tag(mgr, "open") !== "");
+  const qaDetail = await (await get(`/qa/tickets/${reportTicket}`, cookie)).text();
+  check("report", "QA ticket detail keeps Edit/Delete alongside the report actions", />Edit</.test(qaDetail) && />Delete</.test(qaDetail) && tag(qaDetail, "download") !== "");
+}
+
+// ---------------------------------------------------------------------------
 const failed = results.filter((r) => !r.pass);
 for (const r of results) console.log(`${r.pass ? "PASS" : "FAIL"}  [${r.area}] ${r.name}${!r.pass && r.detail ? ` — ${r.detail}` : ""}`);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
