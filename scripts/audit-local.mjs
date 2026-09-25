@@ -404,9 +404,9 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
     const html = await (await get(`${base}/tickets/${reportTicket}`, c)).text();
     const open = tag(html, "open");
     const download = tag(html, "download");
-    check("report", `${who}: Open targets a new tab`, open.includes('target="_blank"') && open.includes(`href="${base}/documents/${docId}"`), open);
+    check("report", `${who}: QA Report card has no Open action`, open === "" && !/in a new tab/.test(html));
     check("report", `${who}: Download uses download behaviour`, /\sdownload="[^"]+"/.test(download) && download.includes(`href="${base}/documents/${docId}?download=1"`) && !download.includes("target="));
-    check("report", `${who}: Open and Download share the same button styling`, !!cls(open) && cls(open) === cls(download) && /border/.test(cls(open)));
+    check("report", `${who}: Download keeps its button styling`, /border/.test(cls(download) ?? "") && /focus-visible:/.test(cls(download) ?? ""));
 
     const openRedirect = await get(`${base}/documents/${docId}`, c);
     const openUrl = openRedirect.headers.get("location") ?? "";
@@ -424,8 +424,22 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
     check("evidence", `${who}: long evidence text wraps inside its card`, /<span class="[^"]*min-w-0[^"]*wrap-anywhere[^"]*">https:\/\/example.com/.test(item) && !/truncate|overflow-x-auto/.test(item));
   }
   const mgr = await (await get(`/manager/tickets/${reportTicket}`, cookie)).text();
-  check("report", "manager ticket detail stays read-only (even signed in)", !/>Edit<|>Delete<|Upload QA report|Sign out/.test(mgr) && tag(mgr, "open") !== "");
+  check("report", "manager ticket detail stays read-only (even signed in)", !/>Edit<|>Delete<|Upload QA report|Sign out/.test(mgr) && tag(mgr, "download") !== "");
   const qaDetail = await (await get(`/qa/tickets/${reportTicket}`, cookie)).text();
+  // Tickets tables: explicit Assigned column from qa_records.assigned_on (same date format as the app, "—" if empty).
+  const fmt = (d) => (d ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`)) : "—");
+  const ownRows = (await admin.from("qa_records").select("id, assigned_on").eq("owner_id", OWNER_ID)).data;
+  for (const [who, path, c] of [["manager", "/manager/tickets", undefined], ["QA", "/qa/tickets", cookie]]) {
+    const html = await (await get(path, c)).text();
+    const heads = [...html.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]);
+    check("assigned", `${who} tickets table has an Assigned column before QA completed`, heads.indexOf("Assigned") > -1 && heads.indexOf("Assigned") === heads.indexOf("QA completed") - 1, heads.join(" | "));
+    const rowsOk = ownRows.every((r) => {
+      const tr = new RegExp(`<tr[^>]*>(?:(?!</tr>).)*/tickets/${r.id}(?:(?!</tr>).)*</tr>`, "s").exec(html)?.[0] ?? "";
+      const tds = [...tr.matchAll(/<td[^>]*>((?:(?!<\/td>).)*)<\/td>/gs)].map((m) => m[1].replace(/<[^>]+>/g, ""));
+      return tds[heads.indexOf("Assigned")] === fmt(r.assigned_on);
+    });
+    check("assigned", `${who} tickets table shows each ticket's assigned_on (or —)`, rowsOk && ownRows.some((r) => r.assigned_on) && ownRows.some((r) => !r.assigned_on));
+  }
   check("report", "QA ticket detail keeps Edit/Delete alongside the report actions", />Edit</.test(qaDetail) && />Delete</.test(qaDetail) && tag(qaDetail, "download") !== "");
 }
 

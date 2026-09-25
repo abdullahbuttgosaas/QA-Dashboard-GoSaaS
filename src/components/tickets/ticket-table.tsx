@@ -85,12 +85,13 @@ export function TicketTable({ rows, hrefBase, linkQuery = "", showOwner = false,
         <EmptyState title={rows.length === 0 ? "No tickets yet" : "No tickets match your filters"} />
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
+          <table className="w-full min-w-[860px] text-left text-sm">
             <thead className="text-xs text-ink-muted">
               <tr className="border-b border-line">
                 <th className="px-5 py-2.5 font-medium">Ticket</th>
                 {showOwner && <th className="px-3 py-2.5 font-medium">QA</th>}
                 <th className="px-3 py-2.5 font-medium">Status</th>
+                <th className="px-3 py-2.5 font-medium">Assigned</th>
                 <th className="px-3 py-2.5 font-medium">QA completed</th>
                 <th className="px-3 py-2.5 text-right font-medium">Executed</th>
                 <th className="px-3 py-2.5 text-right font-medium">Pass rate</th>
@@ -118,6 +119,7 @@ export function TicketTable({ rows, hrefBase, linkQuery = "", showOwner = false,
                   <td className="px-3 py-3">
                     <QaStatusBadge status={r.qa_status} />
                   </td>
+                  <td className="px-3 py-3 text-ink-secondary">{formatDate(r.assigned_on)}</td>
                   <td className="px-3 py-3 text-ink-secondary">{formatDate(r.qa_completed_on)}</td>
                   <td className="px-3 py-3 text-right text-ink">{r.executed}</td>
                   <td className="px-3 py-3 text-right text-ink">{formatPercent(r.passRate)}</td>

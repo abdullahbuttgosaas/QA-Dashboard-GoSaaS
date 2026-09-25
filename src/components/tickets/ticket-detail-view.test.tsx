@@ -59,12 +59,12 @@ describe("QA report actions", () => {
   it.each([
     ["manager", "/manager/documents"],
     ["QA", "/qa/documents"],
-  ])("%s: Open opens the signed-link route in a new tab", async (_who, base) => {
-    const open = anchor(await render(base), "open");
-    expect(open).toContain(`href="${base}/${documents[0].id}"`);
-    expect(open).toContain('target="_blank"');
-    expect(open).toContain('rel="noopener noreferrer"');
-    expect(open).toContain(`aria-label="Open ${documents[0].file_name} in a new tab"`);
+  ])("%s: no Open action is rendered", async (_who, base) => {
+    const html = await render(base);
+    expect(anchor(html, "open")).toBe("");
+    // No link/button labelled Open (the bug status badge "Open" is a <span>, not an action).
+    expect(html).not.toMatch(/<(a|button)\b[^>]*>(?:(?!<\/\1>)[\s\S])*\bOpen\b(?:(?!<\/\1>)[\s\S])*<\/\1>/);
+    expect(html).not.toMatch(/in a new tab/);
   });
 
   it.each([
@@ -78,19 +78,16 @@ describe("QA report actions", () => {
     expect(download).toContain(`aria-label="Download ${documents[0].file_name}"`);
   });
 
-  it("both actions share identical button styling (incl. hover/focus states)", async () => {
-    const html = await render("/manager/documents");
-    const openClass = classOf(anchor(html, "open"));
-    expect(openClass).toBeTruthy();
-    expect(classOf(anchor(html, "download"))).toBe(openClass);
-    expect(openClass).toMatch(/border/);
-    expect(openClass).toMatch(/hover:/);
-    expect(openClass).toMatch(/focus-visible:/);
+  it("Download keeps its button styling (incl. hover/focus states)", async () => {
+    const downloadClass = classOf(anchor(await render("/manager/documents"), "download"));
+    expect(downloadClass).toMatch(/border/);
+    expect(downloadClass).toMatch(/hover:/);
+    expect(downloadClass).toMatch(/focus-visible:/);
   });
 
-  it("actions wrap instead of overflowing, and the file name wraps instead of being cut", async () => {
+  it("Download sits in a wrapping row and the file name wraps instead of being cut", async () => {
     const html = await render("/manager/documents");
-    expect(html).toMatch(/<div class="mt-2 flex flex-wrap gap-2"><a[^>]*data-report-action="open"/);
+    expect(html).toMatch(/<div class="mt-2 flex flex-wrap gap-2"><a[^>]*data-report-action="download"/);
     expect(html).toMatch(/class="[^"]*wrap-anywhere[^"]*"[^>]*>CHG0045893 - Break Fix QA.docx/);
   });
 });
@@ -124,13 +121,13 @@ describe("manager vs QA ticket detail", () => {
   it("manager view renders no edit/delete controls", async () => {
     const html = await render("/manager/documents");
     expect(html).not.toMatch(/>Edit<|>Delete</);
-    expect(anchor(html, "open")).not.toBe("");
+    expect(anchor(html, "download")).not.toBe("");
   });
 
   it("QA view keeps the same report/evidence UI plus its own actions", async () => {
     const html = await render("/qa/documents", <button>Edit</button>);
     expect(html).toContain(">Edit<");
-    expect(anchor(html, "open")).not.toBe("");
+    expect(anchor(html, "open")).toBe("");
     expect(anchor(html, "download")).not.toBe("");
     expect(html).toContain(LONG);
   });
