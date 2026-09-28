@@ -111,7 +111,11 @@ function asEnum<T extends string>(v: unknown, allowed: readonly T[]): T | null {
 export type ReviewDraft = {
   record: QaRecordInput;
   notes: string[];
+  statusFound: boolean; // false when qa_status above is only the default
 };
+
+export const NOTE_NO_TICKET_NUMBER = "No ticket number was found. Enter it before confirming.";
+export const NOTE_NO_COMPLETION_DATE = "No QA completion date was found. It is required for period metrics.";
 
 export function normalizeExtraction(raw: unknown): ReviewDraft {
   const root = asObj(raw);
@@ -196,13 +200,13 @@ export function normalizeExtraction(raw: unknown): ReviewDraft {
     notes.push(`The report gives a QA completed date (${record.qa_completed_on}) but the ticket is not QA completed; the date was not used.`);
     record.qa_completed_on = null;
   }
-  if (!record.ticket_number) notes.push("No ticket number was found. Enter it before confirming.");
+  if (!record.ticket_number) notes.push(NOTE_NO_TICKET_NUMBER);
   if (record.qa_status === "qa_completed" && !record.qa_completed_on) {
-    notes.push("No QA completion date was found. It is required for period metrics.");
+    notes.push(NOTE_NO_COMPLETION_DATE);
   }
   notes.push(...asStrList(root.extraction_notes));
   const bugsWithoutSeverity = record.data.bugs.filter((b) => !b.severity).length;
   if (bugsWithoutSeverity) notes.push(`${bugsWithoutSeverity} bug(s) have no severity.`);
 
-  return { record, notes };
+  return { record, notes, statusFound: asEnum(ticket.qa_status, QA_STATUSES) !== null };
 }

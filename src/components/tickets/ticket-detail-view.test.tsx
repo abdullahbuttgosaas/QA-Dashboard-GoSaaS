@@ -132,3 +132,28 @@ describe("manager vs QA ticket detail", () => {
     expect(html).toContain(LONG);
   });
 });
+
+describe("QA report list after a replacement", () => {
+  it("lists the report the data came from first and labels earlier reports as replaced", async () => {
+    const { TicketDetailView } = await import("./ticket-detail-view");
+    const older = { ...documents[0], id: "44444444-4444-4444-8444-444444444444", file_name: "old-report.docx" };
+    const current = { ...documents[0], file_name: "new-report.docx" };
+    const html = renderToStaticMarkup(
+      <TicketDetailView
+        record={{ ...record, source_document_id: current.id }}
+        documents={[older, current]}
+        backHref="/x"
+        documentsBase="/manager/documents"
+      />,
+    );
+    expect(html.indexOf("new-report.docx")).toBeLessThan(html.indexOf("old-report.docx"));
+    expect(html).toContain("Current report (source of this ticket&#x27;s data)");
+    expect(html).toContain("Earlier report (replaced)");
+    expect(html.match(/data-report-action="download"/g)).toHaveLength(2); // both still downloadable
+  });
+
+  it("shows no labels for a single report", async () => {
+    const html = await render("/manager/documents");
+    expect(html).not.toContain("Earlier report");
+  });
+});

@@ -8,6 +8,7 @@ import { normalizeExtraction, type ReviewDraft } from "./schema";
 import type { ExtractionProvider } from "./provider";
 
 export { normalizeExtraction, type ReviewDraft };
+export { replacementDraft, type ReplacementTarget } from "./replacement";
 
 // Persisted in qa_documents.extraction. The AI output stays here until a human confirms it.
 export type StoredExtraction = {

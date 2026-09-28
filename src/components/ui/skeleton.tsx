@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
-// Neutral placeholder block. Pulses only when motion is allowed.
+// Neutral placeholder block. Pulses only when motion is allowed. A block-level <span>, so it is valid inside text
+// elements too (e.g. a CardHeader description <p>).
 export function Skeleton({ className }: { className?: string }) {
-  return <div aria-hidden className={cn("rounded-md bg-surface-muted motion-safe:animate-pulse", className)} />;
+  return <span aria-hidden className={cn("block rounded-md bg-surface-muted motion-safe:animate-pulse", className)} />;
 }
 
 // Wraps a page-shaped skeleton: announced once to assistive tech, hidden visually otherwise.

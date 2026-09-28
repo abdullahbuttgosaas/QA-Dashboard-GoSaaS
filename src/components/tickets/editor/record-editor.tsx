@@ -29,6 +29,8 @@ type Props = {
   initial: QaRecordInput;
   submitLabel: string;
   pendingLabel?: string; // e.g. "Creating…", "Confirming…"
+  // Fields shown read-only because they are preserved from an existing ticket (replacement review).
+  locked?: { ticket_number?: boolean; assigned_on?: boolean };
   onSubmit: (payload: QaRecordInput) => Promise<ActionResult>;
   cancelHref: string;
   notes?: string[];
@@ -98,7 +100,7 @@ function finalize(record: QaRecordInput, customFields: Array<{ key: string; valu
   };
 }
 
-export function RecordEditor({ initial, submitLabel, pendingLabel = "Saving…", onSubmit, cancelHref, notes = [], banner }: Props) {
+export function RecordEditor({ initial, submitLabel, pendingLabel = "Saving…", locked = {}, onSubmit, cancelHref, notes = [], banner }: Props) {
   const [record, setRecord] = useState<QaRecordInput>(initial);
   const [customFields, setCustomFields] = useState(() =>
     Object.entries(initial.data.custom_fields).map(([key, value]) => ({ key, value })),
@@ -181,10 +183,13 @@ export function RecordEditor({ initial, submitLabel, pendingLabel = "Saving…",
         <div className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4">
           <TextField
             label="Ticket number *"
+            name="ticket_number"
             value={record.ticket_number}
             onChange={(v) => set({ ticket_number: v.toUpperCase() })}
             error={fieldErrors.ticket_number}
             placeholder="CHG0045893"
+            disabled={locked.ticket_number}
+            hint={locked.ticket_number ? "Kept from the existing ticket" : undefined}
           />
           <TextField label="Title" value={record.title} onChange={(v) => set({ title: v })} className="sm:col-span-1 lg:col-span-3" />
           <TextField
@@ -200,10 +205,13 @@ export function RecordEditor({ initial, submitLabel, pendingLabel = "Saving…",
           />
           <TextField
             label="Assigned on"
+            name="assigned_on"
             type="date"
             value={record.assigned_on ?? ""}
             onChange={(v) => set({ assigned_on: v || null })}
             error={fieldErrors.assigned_on}
+            disabled={locked.assigned_on}
+            hint={locked.assigned_on ? "Preserved from the existing ticket" : undefined}
           />
           <TextField
             label={completionDateAllowed(record.qa_status) ? "QA completed on *" : "QA completed on"}

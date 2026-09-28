@@ -48,3 +48,11 @@ describe("loading skeletons", () => {
     expect(html).not.toMatch(/(^|[\s"])animate-pulse/);
   });
 });
+
+describe("skeleton markup validity", () => {
+  it("never nests a block element inside a <p> (hydration-safe)", () => {
+    for (const html of [renderToStaticMarkup(<DashboardSkeleton />), renderToStaticMarkup(<TicketDetailSkeleton />), renderToStaticMarkup(<TicketListSkeleton />)]) {
+      for (const p of html.match(/<p\b[^>]*>[\s\S]*?<\/p>/g) ?? []) expect(p).not.toMatch(/<(div|section|ul|table)\b/);
+    }
+  });
+});

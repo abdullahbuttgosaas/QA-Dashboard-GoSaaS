@@ -63,10 +63,14 @@ export function UploadForm({
   ownerId,
   accept,
   maxBytes,
+  replacesRecordId,
+  submitLabel = "Upload and extract",
 }: {
   ownerId: string;
   accept: Record<string, string>;
   maxBytes: number;
+  replacesRecordId?: string; // upload into this existing ticket (its report data is replaced after review)
+  submitLabel?: string;
 }) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
@@ -107,7 +111,7 @@ export function UploadForm({
       return setError(`Upload failed: ${upErr.message}`);
     }
 
-    const reg = await registerDocument({ id, storagePath, fileName: file.name, mimeType, size: file.size });
+    const reg = await registerDocument({ id, storagePath, fileName: file.name, mimeType, size: file.size, replacesRecordId });
     if (!reg.ok) {
       await supabase.storage.from("qa-reports").remove([storagePath]);
       inFlight.current = false;
@@ -178,7 +182,7 @@ export function UploadForm({
           onClick={submit}
           className={buttonClass("primary", "md", "ml-auto")}
         >
-          Upload and extract
+          {submitLabel}
         </LoadingButton>
       </div>
     </div>

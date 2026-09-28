@@ -97,11 +97,19 @@ export function TicketDetailView({ record, documents, backHref, documentsBase, o
               <p className="px-5 py-4 text-sm text-ink-muted">No report attached (entered manually).</p>
             ) : (
               <ul className="divide-y divide-line">
-                {documents.map((doc) => (
-                  <li key={doc.id} className="min-w-0 px-5 py-3">
+                {/* The report the ticket's current data came from is listed first; older reports stay downloadable. */}
+                {[...documents]
+                  .sort((a, b) => Number(b.id === record.source_document_id) - Number(a.id === record.source_document_id))
+                  .map((doc) => (
+                  <li key={doc.id} className="min-w-0 px-5 py-3" data-source-document={doc.id === record.source_document_id || undefined}>
                     <div className="text-sm font-medium text-ink wrap-anywhere" title={doc.file_name}>
                       {doc.file_name}
                     </div>
+                    {documents.length > 1 && (
+                      <div className="text-xs font-medium text-ink-secondary">
+                        {doc.id === record.source_document_id ? "Current report (source of this ticket's data)" : "Earlier report (replaced)"}
+                      </div>
+                    )}
                     <div className="text-xs text-ink-muted">
                       {formatBytes(doc.size_bytes)} · uploaded {formatDate(doc.created_at)}
                     </div>

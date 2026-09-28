@@ -571,6 +571,160 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
 }
 
 // ---------------------------------------------------------------------------
+// 9. Upload & extract into an existing ticket (replace report data, keep assigned_on)
+// ---------------------------------------------------------------------------
+{
+  const cookie = await cookieHeader(qaSession);
+  const { client: qa2 } = await sessionFor("second.qa@gosaas.ai");
+  const a = anon();
+  const OLD = {
+    owner_id: OWNER_ID, ticket_number: "REPL-E2E", title: "Old replace title", functional_area: "Old area", qa_status: "qa_completed",
+    assigned_on: "2026-09-11", qa_completed_on: "2026-09-15",
+    data: {
+      schema_version: 1, summary: "Old overview text", environment: "Old environment",
+      requirements: [{ ref: "OLD-R1", text: "old req" }, { ref: "OLD-R2", text: "old req" }],
+      test_cases: [1, 2, 3, 4, 5].map((i) => ({ ref: `OLD-TC${i}`, title: `Old case ${i}`, status: "pass" })),
+      bugs: [1, 2, 3].map((i) => ({ ref: `OLD-BUG${i}`, title: `Old bug ${i}`, severity: "high" })),
+      retests: [{ bug_ref: "OLD-BUG1", result: "pass", notes: "old retest" }],
+      evidence: [{ description: "Old evidence screenshot", location: "Image 1" }],
+      custom_fields: { "Old field": "old value" },
+      custom_sections: [{ heading: "Old custom section", content: "old content" }],
+    },
+  };
+  const ticket = (await qa.from("qa_records").insert(OLD).select("*").single()).data;
+  check("replace", "fixture ticket created", !!ticket);
+
+  // Original report attached to the ticket (standalone flow), so we can check it stays downloadable.
+  const origId = crypto.randomUUID();
+  const origPath = `${OWNER_ID}/${origId}/original.txt`;
+  await qa.storage.from(BUCKET).upload(origPath, new Blob(["original"], { type: "text/plain" }), { contentType: "text/plain" });
+  await qa.from("qa_documents").insert({ id: origId, owner_id: OWNER_ID, storage_path: origPath, file_name: "original.txt", mime_type: "text/plain", size_bytes: 8 });
+  await admin.from("qa_documents").update({ extraction_status: "confirmed", record_id: ticket.id, confirmed_at: new Date().toISOString() }).eq("id", origId);
+  await admin.from("qa_records").update({ source_document_id: origId }).eq("id", ticket.id);
+  const snapshot = async () => JSON.stringify((await admin.from("qa_records").select("title, functional_area, qa_status, assigned_on, qa_completed_on, data, source_document_id").eq("id", ticket.id).single()).data);
+  const before = await snapshot();
+
+  // Entry point: QA edit page only.
+  const edit = await (await get(`/qa/tickets/${ticket.id}/edit`, cookie)).text();
+  check("replace", "Edit page offers Upload & Extract Report", /Upload &amp; Extract Report/.test(edit) && /Replace report data from document/.test(edit));
+  check("replace", "Edit page shows the replacement warning (Assigned date preserved)", /will replace the ticket(&#x27;|')s existing QA report data/.test(edit) && /Assigned date/.test(edit) && /preserved/.test(edit));
+  const mgrTicket = await (await get(`/manager/tickets/${ticket.id}`)).text();
+  check("replace", "manager ticket page has no Upload & Extract", !/Upload &amp; Extract|Replace ticket data/.test(mgrTicket));
+  check("replace", "manager has no edit route", (await get(`/manager/tickets/${ticket.id}/edit`)).status === 404);
+  check("replace", "anonymous cannot open the QA edit page", [302, 307].includes((await get(`/qa/tickets/${ticket.id}/edit`)).status));
+
+  // Upload a real report into the ticket and run the real extraction route.
+  const REPORT = [
+    "QA Report - REPL-E2E",
+    "Title: New replace title",
+    "Overview: New overview from the uploaded document.",
+    "Requirements: NEW-R1 Login works; NEW-R2 Logout works; NEW-R3 Profile loads; NEW-R4 Settings save",
+    "Test cases:",
+    ...[1, 2, 3, 4, 5, 6, 7, 8].map((i) => `NEW-TC${i}: New case ${i} - Result: Pass`),
+    "Bugs:",
+    "NEW-BUG1: New only bug - Severity: Low - Status: Open",
+  ].join("\n");
+  const docId = crypto.randomUUID();
+  const path = `${OWNER_ID}/${docId}/replacement.txt`;
+  await qa.storage.from(BUCKET).upload(path, new Blob([REPORT], { type: "text/plain" }), { contentType: "text/plain" });
+  const reg = await qa.from("qa_documents").insert({ id: docId, owner_id: OWNER_ID, storage_path: path, file_name: "replacement.txt", mime_type: "text/plain", size_bytes: REPORT.length, replaces_record_id: ticket.id });
+  check("replace", "QA registers an upload into own ticket", !reg.error, reg.error?.message);
+  const ext = await fetch(`${APP}/api/documents/${docId}/extract`, { method: "POST", headers: { cookie } });
+  const extDoc = (await admin.from("qa_documents").select("extraction_status, extraction_error").eq("id", docId).single()).data;
+  check("replace", "real AI extraction produces a draft for review", ext.status === 200 && extDoc.extraction_status === "ready_for_review", `${ext.status} ${extDoc.extraction_status} ${extDoc.extraction_error ?? ""}`);
+  check("replace", "extraction does not touch the ticket", (await snapshot()) === before);
+
+  // Manager / other QA cannot see the draft.
+  check("replace", "manager cannot see the replacement draft", ((await a.from("qa_documents").select("id").eq("id", docId)).data ?? []).length === 0);
+  check("replace", "manager cannot open the draft file", (await get(`/manager/documents/${docId}`)).status === 404);
+  check("replace", "manager ticket page does not show the raw draft", !(await (await get(`/manager/tickets/${ticket.id}`)).text()).includes("replacement.txt"));
+  check("replace", "other QA cannot see the draft", ((await qa2.from("qa_documents").select("id").eq("id", docId)).data ?? []).length === 0);
+  check("replace", "other QA cannot open the review page", (await get(`/qa/review/${docId}`, await cookieHeader((await sessionFor("second.qa@gosaas.ai")).session))).status === 404);
+  check("replace", "anon cannot call replace_record_from_extraction", !!(await a.rpc("replace_record_from_extraction", { p_document_id: docId, p_record: {} })).error);
+  check("replace", "other QA cannot confirm my replacement", !!(await qa2.rpc("replace_record_from_extraction", { p_document_id: docId, p_record: { title: "x" } })).error);
+  const hijackId = crypto.randomUUID();
+  const hijack = await qa2.from("qa_documents").insert({ id: hijackId, owner_id: (await qa2.auth.getUser()).data.user.id, storage_path: `${(await qa2.auth.getUser()).data.user.id}/${hijackId}/x.txt`, file_name: "x.txt", mime_type: "text/plain", size_bytes: 1, replaces_record_id: ticket.id });
+  if (!hijack.error) await admin.from("qa_documents").update({ extraction_status: "ready_for_review" }).eq("id", hijackId);
+  check("replace", "other QA cannot replace my ticket even with a doc aimed at it", !!(await qa2.rpc("replace_record_from_extraction", { p_document_id: hijackId, p_record: { title: "hijack" } })).error && (await snapshot()) === before);
+
+  // Review screen: replace mode, warning, preserved fields, no old values mixed in.
+  const review = await (await get(`/qa/review/${docId}`, cookie)).text();
+  check("replace", "review is labelled Replace existing ticket data", /Replace existing ticket data/.test(review) && /data-replace-warning/.test(review));
+  check("replace", "review offers Replace ticket data (not the standalone confirm)", /Replace ticket data/.test(review) && !/Confirm and save/.test(review));
+  check("replace", "review shows extracted data only (no old values mixed in)", /NEW-TC1/.test(review) && !/OLD-TC1|OLD-BUG1|Old overview text|Old custom section|Old evidence/.test(review));
+  check("replace", "review keeps the ticket's Assigned date", /name="assigned_on"[^>]*value="2026-09-11"|value="2026-09-11"[^>]*name="assigned_on"/.test(review));
+  check("replace", "standalone confirm is refused for a replacement draft", !!(await qa.rpc("confirm_extraction", { p_document_id: docId, p_record: { ticket_number: "REPL-E2E" } })).error && (await snapshot()) === before);
+
+  // Cancel (discard) a second draft: ticket unchanged.
+  const cancelId = crypto.randomUUID();
+  await qa.from("qa_documents").insert({ id: cancelId, owner_id: OWNER_ID, storage_path: `${OWNER_ID}/${cancelId}/c.txt`, file_name: "c.txt", mime_type: "text/plain", size_bytes: 1, replaces_record_id: ticket.id });
+  await qa.from("qa_documents").update({ extraction_status: "discarded" }).eq("id", cancelId);
+  check("replace", "cancelled replacement leaves the ticket unchanged", (await snapshot()) === before);
+
+  // Failed extraction: error shown, retry/cancel offered, ticket unchanged, cannot be applied.
+  const failId = crypto.randomUUID();
+  await qa.from("qa_documents").insert({ id: failId, owner_id: OWNER_ID, storage_path: `${OWNER_ID}/${failId}/f.txt`, file_name: "f.txt", mime_type: "text/plain", size_bytes: 1, replaces_record_id: ticket.id });
+  await qa.from("qa_documents").update({ extraction_status: "failed", extraction_error: "Model overloaded" }).eq("id", failId);
+  const failPage = await (await get(`/qa/review/${failId}`, cookie)).text();
+  check("replace", "failed extraction shows the error with Retry and Cancel", /AI extraction failed/.test(failPage) && /Model overloaded/.test(failPage) && /Retry extraction/.test(failPage) && />Cancel</.test(failPage) && !/Replace ticket data/.test(failPage));
+  check("replace", "failed extraction cannot replace the ticket", !!(await qa.rpc("replace_record_from_extraction", { p_document_id: failId, p_record: { title: "x" } })).error && (await snapshot()) === before);
+
+  // Confirm (as the server action does): the reviewed draft replaces everything; assigned_on preserved.
+  const { data: extraction } = await admin.from("qa_documents").select("extraction").eq("id", docId).single();
+  const raw = extraction.extraction.raw;
+  const reviewed = {
+    ticket_number: "REPL-E2E", assigned_on: "2026-09-11", title: raw.ticket?.title || "New replace title", functional_area: null,
+    qa_status: "assigned", qa_completed_on: null,
+    data: {
+      schema_version: 1, summary: raw.summary || "New overview from the uploaded document.", environment: "",
+      requirements: (raw.requirements ?? []).map((r) => ({ ref: r.ref ?? "", text: r.text ?? "" })),
+      test_cases: (raw.test_cases ?? []).map((t) => ({ ref: t.ref ?? "", title: t.title ?? "", status: "pass" })),
+      bugs: (raw.bugs ?? []).map((b) => ({ ref: b.ref ?? "", title: b.title ?? "", severity: "low" })),
+      retests: [], evidence: [], custom_fields: {}, custom_sections: [],
+    },
+  };
+  const rep = await qa.rpc("replace_record_from_extraction", { p_document_id: docId, p_record: reviewed });
+  check("replace", "QA confirms the replacement", !rep.error && rep.data === ticket.id, rep.error?.message);
+  const after = (await admin.from("qa_records").select("*").eq("id", ticket.id).single()).data;
+  check("replace", "same ticket id and owner", after.id === ticket.id && after.owner_id === OWNER_ID);
+  check("replace", "assigned_on preserved", after.assigned_on === "2026-09-11");
+  check("replace", "old status and completion date gone", after.qa_status === "assigned" && after.qa_completed_on === null);
+  check("replace", "old title/area gone", after.title !== "Old replace title" && after.functional_area === null);
+  check("replace", "extracted arrays replaced exactly (8 test cases, 1 bug, 4 requirements)",
+    after.data.test_cases.length === 8 && after.data.bugs.length === 1 && after.data.requirements.length === 4,
+    `${after.data.test_cases.length}/${after.data.bugs.length}/${after.data.requirements.length}`);
+  check("replace", "old retests/evidence/custom data gone", after.data.retests.length === 0 && after.data.evidence.length === 0 && Object.keys(after.data.custom_fields).length === 0 && after.data.custom_sections.length === 0 && after.data.environment === "");
+  check("replace", "ticket now sourced from the uploaded document", after.source_document_id === docId);
+
+  const qaView = await (await get(`/qa/tickets/${ticket.id}?replaced=1`, cookie)).text();
+  check("replace", "QA ticket shows the completion message", /data-replaced-banner/.test(qaView));
+  check("replace", "QA ticket shows only new data plus preserved assigned date", /NEW-TC1/.test(qaView) && /NEW-BUG1/.test(qaView) && !/OLD-TC|OLD-BUG|OLD-R1|Old overview text|Old custom section|Old evidence screenshot|old value/.test(qaView));
+  const mgrView = await (await get(`/manager/tickets/${ticket.id}`)).text();
+  check("replace", "manager sees the confirmed replacement", /NEW-TC1/.test(mgrView) && !/OLD-TC|OLD-BUG|Old overview text/.test(mgrView));
+  check("replace", "manager sees both reports, current one marked", /replacement\.txt/.test(mgrView) && /original\.txt/.test(mgrView) && /Current report/.test(mgrView) && /Earlier report \(replaced\)/.test(mgrView));
+  check("replace", "manager ticket view is still read-only", !/>Edit<|>Delete<|Replace ticket data|Upload &amp; Extract/.test(mgrView));
+  for (const [label, id] of [["uploaded", docId], ["original", origId]]) {
+    const loc = (await get(`/manager/documents/${id}?download=1`)).headers.get("location") ?? "";
+    const dl = await fetch(loc);
+    check("replace", `manager can download the ${label} report`, dl.status === 200 && /attachment/.test(dl.headers.get("content-disposition") ?? ""));
+  }
+  check("replace", "manager still cannot read raw extraction", !!(await a.from("qa_documents").select("extraction").eq("id", docId)).error);
+  check("replace", "a confirmed replacement cannot be applied twice", !!(await qa.rpc("replace_record_from_extraction", { p_document_id: docId, p_record: reviewed })).error);
+  check("replace", "review link of a confirmed replacement goes to the ticket", (await get(`/qa/review/${docId}`, cookie)).headers.get("location")?.endsWith(`/qa/tickets/${ticket.id}`));
+
+  // Standalone upload flow is unchanged.
+  const soloId = crypto.randomUUID();
+  await qa.storage.from(BUCKET).upload(`${OWNER_ID}/${soloId}/solo.txt`, new Blob(["x"], { type: "text/plain" }), { contentType: "text/plain" });
+  await qa.from("qa_documents").insert({ id: soloId, owner_id: OWNER_ID, storage_path: `${OWNER_ID}/${soloId}/solo.txt`, file_name: "solo.txt", mime_type: "text/plain", size_bytes: 1 });
+  await qa.from("qa_documents").update({ extraction_status: "ready_for_review" }).eq("id", soloId);
+  const soloReview = await (await get(`/qa/review/${soloId}`, cookie)).text();
+  check("replace", "standalone review unchanged (Confirm and save, no replace wording)", /Confirm and save/.test(soloReview) && !/Replace existing ticket data/.test(soloReview));
+  const solo = await qa.rpc("confirm_extraction", { p_document_id: soloId, p_record: { ticket_number: "SOLO-1", qa_status: "in_progress", data: { schema_version: 1 } } });
+  check("replace", "standalone confirm still creates a ticket", !solo.error && !!solo.data, solo.error?.message);
+  check("replace", "standalone confirm still enforces the status/date rule", !!(await qa.rpc("confirm_extraction", { p_document_id: soloId, p_record: { ticket_number: "SOLO-2", qa_status: "assigned", qa_completed_on: "2026-09-20" } })).error);
+}
+
+// ---------------------------------------------------------------------------
 const failed = results.filter((r) => !r.pass);
 for (const r of results) console.log(`${r.pass ? "PASS" : "FAIL"}  [${r.area}] ${r.name}${!r.pass && r.detail ? ` — ${r.detail}` : ""}`);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`);

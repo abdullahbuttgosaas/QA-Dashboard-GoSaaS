@@ -14,6 +14,8 @@ const RegisterSchema = z.object({
   fileName: z.string().min(1).max(255),
   mimeType: z.string().refine((t) => t in ACCEPTED_REPORT_TYPES, "Unsupported file type"),
   size: z.number().int().min(1).max(MAX_REPORT_BYTES),
+  // Set when the upload will replace the report data of this existing ticket (Edit ticket -> Upload & Extract).
+  replacesRecordId: z.uuid().optional(),
 });
 
 // Records a file the browser already uploaded to Storage (under the user's own folder).
@@ -23,10 +25,20 @@ export async function registerDocument(input: z.infer<typeof RegisterSchema>): P
 
   const parsed = RegisterSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid upload." };
-  const { id, storagePath, fileName, mimeType, size } = parsed.data;
+  const { id, storagePath, fileName, mimeType, size, replacesRecordId } = parsed.data;
   if (!storagePath.startsWith(`${session.profile.id}/${id}/`)) return { ok: false, error: "Invalid storage path." };
 
   const supabase = await createClient();
+  if (replacesRecordId) {
+    // Only the owner's own ticket (RLS also limits reads to own rows); the DB function re-checks on confirm.
+    const { data: target } = await supabase
+      .from("qa_records")
+      .select("id")
+      .eq("id", replacesRecordId)
+      .eq("owner_id", session.profile.id)
+      .maybeSingle();
+    if (!target) return { ok: false, error: "Ticket not found." };
+  }
   const { error } = await supabase.from("qa_documents").insert({
     id,
     owner_id: session.profile.id,
@@ -34,6 +46,7 @@ export async function registerDocument(input: z.infer<typeof RegisterSchema>): P
     file_name: fileName,
     mime_type: mimeType,
     size_bytes: size,
+    replaces_record_id: replacesRecordId ?? null,
   });
   if (error) return { ok: false, error: `Could not register upload: ${error.message}` };
   return { ok: true };
@@ -59,6 +72,29 @@ export async function confirmExtraction(documentId: string, payload: unknown): P
   revalidatePath("/qa", "layout");
   revalidatePath("/manager", "layout");
   redirect(`/qa/tickets/${recordId}`);
+}
+
+// Human-confirmed replacement: the reviewed extraction replaces the existing ticket's report data. One DB function
+// call, so it is atomic: either the ticket is fully replaced and the document linked, or nothing changes.
+export async function replaceTicketFromExtraction(documentId: string, payload: unknown): Promise<ActionResult> {
+  const session = await requireQaSession();
+  if ("error" in session) return { ok: false, error: session.error };
+
+  const parsed = QaRecordInputSchema.safeParse(payload);
+  if (!parsed.success) {
+    return { ok: false, error: "Please fix the highlighted fields.", fieldErrors: zodFieldErrors(parsed.error) };
+  }
+
+  const supabase = await createClient();
+  const { data: recordId, error } = await supabase.rpc("replace_record_from_extraction", {
+    p_document_id: documentId,
+    p_record: parsed.data as never,
+  });
+  if (error) return { ok: false, error: `Could not replace the ticket data: ${error.message}. The ticket was not changed.` };
+
+  revalidatePath("/qa", "layout");
+  revalidatePath("/manager", "layout");
+  redirect(`/qa/tickets/${recordId}?replaced=1`);
 }
 
 // Discard an unconfirmed upload: marks it discarded and removes the stored file.

@@ -65,6 +65,7 @@ export type Database = {
           mime_type: string
           owner_id: string
           record_id: string | null
+          replaces_record_id: string | null
           size_bytes: number
           storage_path: string
           updated_at: string
@@ -82,6 +83,7 @@ export type Database = {
           mime_type: string
           owner_id: string
           record_id?: string | null
+          replaces_record_id?: string | null
           size_bytes: number
           storage_path: string
           updated_at?: string
@@ -99,6 +101,7 @@ export type Database = {
           mime_type?: string
           owner_id?: string
           record_id?: string | null
+          replaces_record_id?: string | null
           size_bytes?: number
           storage_path?: string
           updated_at?: string
@@ -121,6 +124,20 @@ export type Database = {
           {
             foreignKeyName: "qa_documents_record_id_fkey"
             columns: ["record_id"]
+            isOneToOne: false
+            referencedRelation: "qa_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qa_documents_replaces_record_id_fkey"
+            columns: ["replaces_record_id"]
+            isOneToOne: false
+            referencedRelation: "qa_record_metrics"
+            referencedColumns: ["record_id"]
+          },
+          {
+            foreignKeyName: "qa_documents_replaces_record_id_fkey"
+            columns: ["replaces_record_id"]
             isOneToOne: false
             referencedRelation: "qa_records"
             referencedColumns: ["id"]
@@ -338,6 +355,10 @@ export type Database = {
           week_index: number
           week_start: string
         }[]
+      }
+      replace_record_from_extraction: {
+        Args: { p_document_id: string; p_record: Json }
+        Returns: string
       }
       reporting_periods: {
         Args: { p_count?: number; p_owner: string; p_today?: string }
