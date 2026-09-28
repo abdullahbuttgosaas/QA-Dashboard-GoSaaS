@@ -32,11 +32,20 @@ export function SettingsForm({ profile, siteUrl, saved }: { profile: PublicProfi
           <input name="display_name" defaultValue={profile.display_name} className={input} required />
         </Label>
         <Label label="Manager filter name" error={errors.public_slug} hint="Used in the manager dashboard link that shows only your work.">
-          <div className="flex items-center">
-            <span className="flex h-9 items-center rounded-l-md border border-r-0 border-line-strong bg-surface-muted px-3 text-sm text-ink-muted">
+          {/* Long hosts (e.g. the production domain) wrap inside the prefix; on phones the prefix sits above the input. */}
+          <div className="flex min-w-0 flex-col sm:flex-row">
+            <span
+              data-slug-prefix
+              className="flex min-h-9 min-w-0 items-center rounded-t-md border border-b-0 border-line-strong bg-surface-muted px-3 py-1.5 text-sm text-ink-muted wrap-anywhere sm:rounded-l-md sm:rounded-tr-none sm:border-r-0 sm:border-b"
+            >
               {siteUrl.replace(/^https?:\/\//, "")}/manager?qa=
             </span>
-            <input name="public_slug" defaultValue={profile.public_slug} className={`${input} rounded-l-none`} required />
+            <input
+              name="public_slug"
+              defaultValue={profile.public_slug}
+              className={`${input} min-w-0 rounded-t-none sm:h-auto sm:min-h-9 sm:flex-1 sm:rounded-l-none sm:rounded-tr-md`}
+              required
+            />
           </div>
         </Label>
         <p className="text-xs text-ink-muted">Managers can always see your confirmed tickets, reports and metrics (read-only).</p>

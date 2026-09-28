@@ -402,10 +402,21 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
   check("lifetime", "manager individual QA Lifetime = that QA only", metric(mTesterLife, "test_cases_executed") === String(testerLife.test_cases_executed) && testerLife.test_cases_executed !== allLife.test_cases_executed);
   check("lifetime", "QA selector keeps the chosen period", /<input type="hidden" name="period" value="lifetime"\/>/.test(mTesterLife));
 
-  const qaLife = await (await get("/qa?period=lifetime", cookie)).text();
-  const ownLife = await lifetime(OWNER_ID);
-  check("lifetime", "QA selector offers 1-12 weeks + Lifetime", JSON.stringify(periodOptions(qaLife)) === JSON.stringify(expectedOptions));
-  check("lifetime", "QA Lifetime = own history only, no fake comparison", /Lifetime · All historical data/.test(qaLife) && noDeltas(qaLife) && metric(qaLife, "test_cases_executed") === String(ownLife.test_cases_executed));
+  // QA dashboard: no Period selector; always the signed-in QA's saved Settings value (no dashboard override).
+  const qaHomeNow = await (await get("/qa", cookie)).text();
+  const qaOverride = await (await get("/qa?period=lifetime", cookie)).text();
+  const ownTwo = await weekly(OWNER_ID, 2);
+  check("qa-period", "QA dashboard has no Period selector", !/name="period"/.test(qaHomeNow) && !/>Lifetime</.test(qaHomeNow));
+  check("qa-period", "QA dashboard ignores ?period= (no Lifetime override)", !/Lifetime · All historical data/.test(qaOverride) && /Last 2 weeks/.test(qaOverride)
+    && /data-period="([^"]+)"/.exec(qaOverride)?.[1] === `${ownTwo.at(-2).week_start}..${ownTwo.at(-1).week_end}`);
+  const set4 = await qa.from("profiles").update({ reporting_period_weeks: 4 }).eq("id", OWNER_ID).select("id");
+  const qaFour = await (await get("/qa", cookie)).text();
+  const ownFour = await weekly(OWNER_ID, 4);
+  check("qa-period", "QA dashboard follows the saved setting (2 -> 4 weeks)", !set4.error && /Last 4 weeks/.test(qaFour)
+    && /data-period="([^"]+)"/.exec(qaFour)?.[1] === `${ownFour.at(-4).week_start}..${ownFour.at(-1).week_end}`
+    && metric(qaFour, "test_cases_executed") === String(await expected(OWNER_ID, 4)));
+  await qa.from("profiles").update({ reporting_period_weeks: 2 }).eq("id", OWNER_ID);
+  check("qa-period", "QA dashboard back on the saved 2 weeks", /Last 2 weeks/.test(await (await get("/qa", cookie)).text()));
 
   const oneWeek = await (await get("/manager?period=1")).text();
   const cur = (await weekly(null, 1)).at(-1);
