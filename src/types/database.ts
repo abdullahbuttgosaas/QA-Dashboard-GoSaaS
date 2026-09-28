@@ -296,6 +296,49 @@ export type Database = {
           tickets_completed: number
         }[]
       }
+      qa_metrics_lifetime: {
+        Args: { p_owner: string }
+        Returns: {
+          bugs_critical: number
+          bugs_high: number
+          bugs_low: number
+          bugs_medium: number
+          bugs_total: number
+          retests_failed: number
+          retests_passed: number
+          retests_pending: number
+          retests_total: number
+          test_cases_blocked: number
+          test_cases_executed: number
+          test_cases_failed: number
+          test_cases_passed: number
+          tickets_assigned: number
+          tickets_completed: number
+        }[]
+      }
+      qa_metrics_lifetime_weeks: {
+        Args: { p_owner: string; p_today?: string }
+        Returns: {
+          bugs_critical: number
+          bugs_high: number
+          bugs_low: number
+          bugs_medium: number
+          bugs_total: number
+          retests_failed: number
+          retests_passed: number
+          retests_pending: number
+          retests_total: number
+          test_cases_blocked: number
+          test_cases_executed: number
+          test_cases_failed: number
+          test_cases_passed: number
+          tickets_assigned: number
+          tickets_completed: number
+          week_end: string
+          week_index: number
+          week_start: string
+        }[]
+      }
       reporting_periods: {
         Args: { p_count?: number; p_owner: string; p_today?: string }
         Returns: {

@@ -4,9 +4,20 @@ import type { QaOption } from "@/services/profiles";
 
 // Plain GET form: the selection lives in the URL (?qa=<slug>), so it is shareable and survives navigation.
 // Choosing an option submits immediately; the button is the no-JavaScript fallback.
-export function QaSelector({ qas, selected }: { qas: Array<Pick<QaOption, "display_name" | "public_slug">>; selected: string | null }) {
+export function QaSelector({
+  qas,
+  selected,
+  keep = {},
+}: {
+  qas: Array<Pick<QaOption, "display_name" | "public_slug">>;
+  selected: string | null;
+  keep?: Record<string, string>; // other params to carry along, e.g. the dashboard ?period=
+}) {
   return (
     <form method="get" className="flex items-center gap-2">
+      {Object.entries(keep).map(([k, v]) => (
+        <input key={k} type="hidden" name={k} value={v} />
+      ))}
       <label htmlFor="qa-selector" className="text-sm font-medium text-ink-secondary">
         QA
       </label>

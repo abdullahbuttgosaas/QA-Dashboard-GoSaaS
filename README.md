@@ -35,7 +35,16 @@ never entered as aggregates. Pass rate = passed ÷ (passed + failed); blocked/no
 ending with the current week (default 2 = previous + current week), compared with the N weeks immediately before.
 Trends show one bucket per week ("Previous week" / "Current week", or "Week 1..N"). Each QA sets N (1–12) in
 Settings; the manager's All-QAs view uses 2 weeks, an individual QA view uses that QA's setting. Buckets come from
-`qa_metrics_by_week()`; each metric keeps its own date (assigned, completed, executed, found, retest date).
+`qa_metrics_by_week()`.
+
+**Attribution:** tickets assigned count by `assigned_on`; tickets completed by `qa_completed_on`. For a ticket that
+has `qa_completed_on`, *all* its ticket-level QA metrics (test cases executed/passed/failed/blocked, bugs, retests)
+count in the week of `qa_completed_on`, whatever dates the individual items carry. Tickets without a completion date
+keep using each item's own date.
+
+**Lifetime:** the dashboards' *Period* filter (`?period=1..12` or `?period=lifetime`, not saved) adds Lifetime: totals
+over all history (`qa_metrics_lifetime()`), weekly Monday–Friday trend buckets from the first week with data
+(`qa_metrics_lifetime_weeks()`), and no previous-period comparison.
 
 **Ticket status and QA completed date:** only *QA completed* tickets have (and require) a completion date.
 Assigned / In progress tickets cannot have one — enforced by the editor, server validation and a DB constraint.

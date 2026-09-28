@@ -49,7 +49,7 @@ export function TrendChart({ title, description, periods, series, kind, format =
   const y = (v: number) => PAD.top + innerH - (v / yMax) * innerH;
   const cx = (i: number) => PAD.left + slot * i + slot / 2;
   const barW = Math.min(BAR_MAX, slot * 0.6);
-  const labelEvery = n > 8 ? 2 : 1;
+  const labelEvery = Math.max(1, Math.ceil(n / 8));
   const latest = n - 1;
 
   return (

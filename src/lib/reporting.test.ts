@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  parsePeriod,
+  periodValue,
   clampBack,
   clampWeeks,
   periodAnchorDate,
@@ -112,5 +114,25 @@ describe("navigation and input guards", () => {
     expect(clampBack("-3")).toBe(0);
     expect(clampBack("2")).toBe(2);
     expect(clampBack(999)).toBe(52);
+  });
+});
+
+describe("parsePeriod (dashboard ?period= filter)", () => {
+  it("defaults to the saved/default weeks when absent or invalid", () => {
+    expect(parsePeriod(undefined, 2)).toEqual({ kind: "weeks", weeks: 2 });
+    expect(parsePeriod("", 4)).toEqual({ kind: "weeks", weeks: 4 });
+    expect(parsePeriod("13", 2)).toEqual({ kind: "weeks", weeks: 2 });
+    expect(parsePeriod("0", 3)).toEqual({ kind: "weeks", weeks: 3 });
+    expect(parsePeriod("2.5", 2)).toEqual({ kind: "weeks", weeks: 2 });
+  });
+  it("accepts 1..12 weeks and lifetime", () => {
+    expect(parsePeriod("1", 2)).toEqual({ kind: "weeks", weeks: 1 });
+    expect(parsePeriod("12", 2)).toEqual({ kind: "weeks", weeks: 12 });
+    expect(parsePeriod("lifetime", 2)).toEqual({ kind: "lifetime" });
+    expect(parsePeriod("LIFETIME", 2)).toEqual({ kind: "lifetime" });
+  });
+  it("round-trips to the URL value", () => {
+    expect(periodValue({ kind: "lifetime" })).toBe("lifetime");
+    expect(periodValue({ kind: "weeks", weeks: 3 })).toBe("3");
   });
 });

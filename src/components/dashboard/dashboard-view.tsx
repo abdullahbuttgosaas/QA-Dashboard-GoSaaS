@@ -1,19 +1,32 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { passRate } from "@/services/metrics";
-import { MAX_BACK_PERIODS, periodTitle, summarizePeriod, weekBucketLabel, type WeekBucket, type WeekTotals } from "@/lib/reporting";
+import {
+  MAX_BACK_PERIODS,
+  periodTitle,
+  sumWeeks,
+  summarizePeriod,
+  weekBucketLabel,
+  type PeriodMode,
+  type ReportingPeriod,
+  type WeekBucket,
+  type WeekTotals,
+} from "@/lib/reporting";
 import { StatTile } from "@/components/dashboard/stat-tile";
 import { SeverityBar } from "@/components/dashboard/severity-bar";
 import { TrendChart, type TrendPeriod } from "@/components/dashboard/trend-chart";
 import { TicketTable, type TicketRow } from "@/components/tickets/ticket-table";
 import { Card, CardHeader } from "@/components/ui/card";
 import { buttonClass } from "@/components/ui/button";
-import { formatPercent, formatRange } from "@/lib/format";
+import { formatPercent, formatRange, formatShortDate } from "@/lib/format";
 
 type Props = {
   title: string;
-  weeks: WeekBucket[]; // 2 x weeksPerPeriod Monday-Friday buckets, oldest first (comparison period, then current)
-  weeksPerPeriod: number;
+  // Weeks mode: 2 x N Monday-Friday buckets, oldest first (comparison period, then current).
+  // Lifetime mode: every weekly bucket from the first week with data to the current week.
+  weeks: WeekBucket[];
+  mode: PeriodMode;
+  lifetimeTotals?: WeekTotals; // all-history totals (Lifetime only)
   back: number; // 0 = current period
   basePath: string; // dashboard path, e.g. "/manager" or "/qa"
   ticketsPath: string; // e.g. "/manager/tickets"
@@ -34,8 +47,20 @@ function withParams(path: string, params: Record<string, string>, extra: Record<
 }
 
 // Shared by the manager (read-only) and QA dashboards. Contains no mutation controls itself.
-export function DashboardView({ title, weeks, weeksPerPeriod, back, basePath, ticketsPath, params = {}, rows, showOwner, toolbar, ticketActions }: Props) {
-  const period = summarizePeriod(weeks, weeksPerPeriod);
+export function DashboardView({ title, weeks, mode, lifetimeTotals, back, basePath, ticketsPath, params = {}, rows, showOwner, toolbar, ticketActions }: Props) {
+  const lifetime = mode.kind === "lifetime";
+  const weeksPerPeriod = mode.kind === "weeks" ? mode.weeks : weeks.length;
+  // Lifetime has no comparison period (previous = null hides every delta) and no period navigation.
+  const period: ReportingPeriod = lifetime
+    ? {
+        weeksPerPeriod,
+        current: lifetimeTotals ?? sumWeeks(weeks),
+        previous: null,
+        currentWeeks: weeks,
+        start: weeks[0]?.week_start ?? "",
+        end: weeks.at(-1)?.week_end ?? "",
+      }
+    : summarizePeriod(weeks, weeksPerPeriod);
   const { current, previous } = period;
   const trendWindow = period.currentWeeks;
 
@@ -46,8 +71,8 @@ export function DashboardView({ title, weeks, weeksPerPeriod, back, basePath, ti
   const d = (key: keyof WeekTotals) => (previous ? current[key] - previous[key] : null);
 
   const trendPeriods: TrendPeriod[] = trendWindow.map((w, i) => ({
-    label: weekBucketLabel(i, weeksPerPeriod),
-    range: `${weekBucketLabel(i, weeksPerPeriod)} · ${formatRange(w.week_start, w.week_end)}`,
+    label: lifetime ? formatShortDate(w.week_start) : weekBucketLabel(i, weeksPerPeriod),
+    range: lifetime ? `Week of ${formatRange(w.week_start, w.week_end)}` : `${weekBucketLabel(i, weeksPerPeriod)} · ${formatRange(w.week_start, w.week_end)}`,
   }));
   const col = (key: keyof WeekTotals) => trendWindow.map((w) => w[key]);
   const query = Object.keys(params).length ? `?${new URLSearchParams(params)}` : "";
@@ -57,12 +82,19 @@ export function DashboardView({ title, weeks, weeksPerPeriod, back, basePath, ti
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-ink">{title}</h1>
-          <p className="text-sm text-ink-muted" data-period={`${period.start}..${period.end}`}>
-            {periodTitle(weeksPerPeriod, back)} · {formatRange(period.start, period.end)} · Monday–Friday
-          </p>
+          {lifetime ? (
+            <p className="text-sm text-ink-muted" data-period="lifetime">
+              Lifetime · All historical data
+            </p>
+          ) : (
+            <p className="text-sm text-ink-muted" data-period={`${period.start}..${period.end}`}>
+              {periodTitle(weeksPerPeriod, back)} · {formatRange(period.start, period.end)} · Monday–Friday
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {toolbar}
+          {!lifetime && (
           <nav className="flex items-center gap-2" aria-label="Reporting period">
             <Link
               href={withParams(basePath, params, { back: String(back + 1) })}
@@ -79,6 +111,7 @@ export function DashboardView({ title, weeks, weeksPerPeriod, back, basePath, ti
               Next period →
             </Link>
           </nav>
+          )}
         </div>
       </div>
 
@@ -141,7 +174,11 @@ export function DashboardView({ title, weeks, weeksPerPeriod, back, basePath, ti
       <Card>
         <CardHeader
           title="Trends"
-          description={`${trendWindow.length} calendar week${trendWindow.length === 1 ? "" : "s"} · Monday–Friday · compared with the ${weeksPerPeriod === 1 ? "week" : `${weeksPerPeriod} weeks`} before`}
+          description={
+            lifetime
+              ? `All history · ${trendWindow.length} calendar week${trendWindow.length === 1 ? "" : "s"} · Monday–Friday`
+              : `${trendWindow.length} calendar week${trendWindow.length === 1 ? "" : "s"} · Monday–Friday · compared with the ${weeksPerPeriod === 1 ? "week" : `${weeksPerPeriod} weeks`} before`
+          }
         />
         <div className="grid gap-x-8 gap-y-6 p-5 md:grid-cols-2">
           <TrendChart

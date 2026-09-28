@@ -11,7 +11,7 @@ export default function ManagerLayout({ children }: LayoutProps<"/manager">) {
           { href: "/manager", label: "Dashboard", exact: true },
           { href: "/manager/tickets", label: "Tickets" },
         ]}
-        preserveParams={["qa"]}
+        preserveParams={["qa", "period"]}
       />
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6">{children}</main>
     </div>

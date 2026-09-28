@@ -1,6 +1,6 @@
 import "server-only";
 import type { Db } from "@/lib/supabase/public";
-import { periodAnchorDate, type WeekBucket } from "@/lib/reporting";
+import { periodAnchorDate, type PeriodMode, type WeekBucket, type WeekTotals } from "@/lib/reporting";
 import { todayIso } from "@/lib/format";
 import type { Database } from "@/types/database";
 
@@ -32,6 +32,35 @@ export async function getWeeklyMetrics(
   });
   if (error) throw new Error(`Failed to load metrics: ${error.message}`);
   return data ?? [];
+}
+
+// Lifetime: totals over all history (no date cutoff) plus Monday-Friday weekly buckets from the first week with
+// data through the current week. ownerId = null aggregates every QA visible to the caller (RLS).
+export async function getLifetimeMetrics(
+  db: Db,
+  ownerId: string | null,
+  today: string = todayIso(),
+): Promise<{ weeks: WeekBucket[]; totals: WeekTotals }> {
+  const [weeks, totals] = await Promise.all([
+    db.rpc("qa_metrics_lifetime_weeks", { p_owner: ownerId as string, p_today: today }),
+    db.rpc("qa_metrics_lifetime", { p_owner: ownerId as string }),
+  ]);
+  if (weeks.error || totals.error) throw new Error(`Failed to load metrics: ${(weeks.error ?? totals.error)!.message}`);
+  return { weeks: weeks.data ?? [], totals: (totals.data ?? [])[0] };
+}
+
+// Dashboard data for either an N-week period (+ comparison) or Lifetime.
+export async function getDashboardMetrics(
+  db: Db,
+  ownerId: string | null,
+  mode: PeriodMode,
+  back = 0,
+): Promise<{ weeks: WeekBucket[]; lifetimeTotals?: WeekTotals }> {
+  if (mode.kind === "lifetime") {
+    const { weeks, totals } = await getLifetimeMetrics(db, ownerId);
+    return { weeks, lifetimeTotals: totals };
+  }
+  return { weeks: await getWeeklyMetrics(db, ownerId, mode.weeks, back) };
 }
 
 // Legacy rolling periods (kept for backwards compatibility; the dashboards use getWeeklyMetrics).

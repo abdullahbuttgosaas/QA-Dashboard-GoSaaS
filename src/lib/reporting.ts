@@ -51,6 +51,23 @@ export function clampWeeks(value: unknown): number {
   return Number.isFinite(n) && n >= 1 ? Math.min(n, MAX_REPORTING_WEEKS) : DEFAULT_REPORTING_WEEKS;
 }
 
+// Dashboard reporting-period filter (?period=): 1..12 calendar weeks or "lifetime". Not saved anywhere; when absent
+// the saved/default number of weeks applies. Lifetime is a mode, never stored as a week count.
+export type PeriodMode = { kind: "weeks"; weeks: number } | { kind: "lifetime" };
+export const LIFETIME = "lifetime";
+
+export function parsePeriod(value: unknown, defaultWeeks: number): PeriodMode {
+  const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (raw === LIFETIME) return { kind: "lifetime" };
+  const n = Number(raw);
+  if (raw && Number.isInteger(n) && n >= 1 && n <= MAX_REPORTING_WEEKS) return { kind: "weeks", weeks: n };
+  return { kind: "weeks", weeks: clampWeeks(defaultWeeks) };
+}
+
+export function periodValue(mode: PeriodMode): string {
+  return mode.kind === "lifetime" ? LIFETIME : String(mode.weeks);
+}
+
 export function clampBack(value: unknown): number {
   const n = Math.trunc(Number(value));
   return Number.isFinite(n) && n > 0 ? Math.min(n, MAX_BACK_PERIODS) : 0;

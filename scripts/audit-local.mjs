@@ -383,6 +383,35 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
   check("status", "QA completed -> in progress with date cleared accepted", !cleared.error && cleared.data?.length === 1, cleared.error?.message);
   const editPage = await (await get(`/qa/tickets/new`, cookie)).text();
   check("status", "new-ticket form renders the QA completed date field", /name="qa_completed_on"/.test(editPage));
+
+  // ---------------------------------------------------------------------------
+  // 6b. Dashboard period filter: 1..12 weeks and Lifetime
+  // ---------------------------------------------------------------------------
+  const lifetime = async (owner) => (await a.rpc("qa_metrics_lifetime", { p_owner: owner })).data[0];
+  const periodOptions = (html) => [.../<select[^>]*name="period"[^>]*>(.*?)<\/select>/s.exec(html)?.[1].matchAll(/<option value="([^"]+)"/g) ?? []].map((m) => m[1]);
+  const expectedOptions = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "lifetime"];
+  const noDeltas = (html) => !/vs previous period|No change/.test(html) && !/Previous period|Next period/.test(html);
+
+  const mAllLife = await (await get("/manager?period=lifetime")).text();
+  check("lifetime", "manager selector offers 1-12 weeks + Lifetime", JSON.stringify(periodOptions(await (await get("/manager")).text())) === JSON.stringify(expectedOptions));
+  check("lifetime", "manager All QAs Lifetime label, no fake comparison", /Lifetime · All historical data/.test(mAllLife) && /data-period="lifetime"/.test(mAllLife) && noDeltas(mAllLife));
+  const allLife = await lifetime(null);
+  check("lifetime", "manager All QAs Lifetime totals = all history of every QA", metric(mAllLife, "test_cases_executed") === String(allLife.test_cases_executed) && metric(mAllLife, "bugs_total") === String(allLife.bugs_total));
+  const mTesterLife = await (await get("/manager?qa=tester&period=lifetime")).text();
+  const testerLife = await lifetime(testerUser.id);
+  check("lifetime", "manager individual QA Lifetime = that QA only", metric(mTesterLife, "test_cases_executed") === String(testerLife.test_cases_executed) && testerLife.test_cases_executed !== allLife.test_cases_executed);
+  check("lifetime", "QA selector keeps the chosen period", /<input type="hidden" name="period" value="lifetime"\/>/.test(mTesterLife));
+
+  const qaLife = await (await get("/qa?period=lifetime", cookie)).text();
+  const ownLife = await lifetime(OWNER_ID);
+  check("lifetime", "QA selector offers 1-12 weeks + Lifetime", JSON.stringify(periodOptions(qaLife)) === JSON.stringify(expectedOptions));
+  check("lifetime", "QA Lifetime = own history only, no fake comparison", /Lifetime · All historical data/.test(qaLife) && noDeltas(qaLife) && metric(qaLife, "test_cases_executed") === String(ownLife.test_cases_executed));
+
+  const oneWeek = await (await get("/manager?period=1")).text();
+  const cur = (await weekly(null, 1)).at(-1);
+  check("lifetime", "1-week filter: current Monday-Friday week, compared with the week before", /This week/.test(oneWeek) && /data-period="([^"]+)"/.exec(oneWeek)?.[1] === `${cur.week_start}..${cur.week_end}` && /vs previous period|No change/.test(oneWeek));
+  const twoWeeks = await (await get("/manager?period=2")).text();
+  check("lifetime", "2-week filter matches the default 2-week view", /data-period="([^"]+)"/.exec(twoWeeks)?.[1] === /data-period="([^"]+)"/.exec(await (await get("/manager")).text())?.[1]);
 }
 
 // ---------------------------------------------------------------------------

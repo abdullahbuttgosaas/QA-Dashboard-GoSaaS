@@ -1,7 +1,7 @@
 -- Run with: npm run db:test (resets the local DB first)
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(66);
+select plan(86);
 
 -- Fixtures -------------------------------------------------------------------
 -- QA 1 (seed): abdullah.butt@gosaas.ai = ...0001, 3 tickets.
@@ -37,6 +37,26 @@ insert into public.qa_records (owner_id, ticket_number, qa_status, assigned_on, 
   ('00000000-0000-4000-8000-000000000003', 'CAL-OPEN',    'in_progress',  '2026-09-22', null,
    '{"test_cases":[{"status":"blocked","executed_on":"2026-09-11"}],"bugs":[{"severity":"high","found_on":"2026-09-04"}]}');
 
+-- QA 4: completion-date attribution and Lifetime fixtures (fixed dates; "today" = Friday 2026-09-25).
+insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data)
+values ('00000000-0000-4000-8000-000000000004', '00000000-0000-0000-0000-000000000000',
+        'authenticated', 'authenticated', 'attribution.qa@gosaas.ai', '{}');
+insert into public.qa_records (owner_id, ticket_number, qa_status, assigned_on, qa_completed_on, data) values
+  -- like production CHG0047193: assigned Fri Sep 11, completed Tue Sep 15, 3 bugs found Sep 11
+  ('00000000-0000-4000-8000-000000000004', 'ATTR-BUGS', 'qa_completed', '2026-09-11', '2026-09-15',
+   '{"bugs":[{"severity":"high","found_on":"2026-09-11"},{"severity":"medium","found_on":"2026-09-11"},{"severity":"low","found_on":"2026-09-11"}]}'),
+  -- test cases executed before (Sep 4) and after (Sep 28) completion on Tue Sep 15
+  ('00000000-0000-4000-8000-000000000004', 'ATTR-TESTS', 'qa_completed', null, '2026-09-15',
+   '{"test_cases":[{"status":"pass","executed_on":"2026-09-04"},{"status":"fail","executed_on":"2026-09-28"}]}'),
+  -- retests dated before (Sep 8) and after (Sep 23) completion on Wed Sep 16
+  ('00000000-0000-4000-8000-000000000004', 'ATTR-RETESTS', 'qa_completed', null, '2026-09-16',
+   '{"retests":[{"result":"pass","date":"2026-09-08"},{"result":"fail","date":"2026-09-23"}]}'),
+  -- older than any 12-week window (Mon Jan 5, 2026)
+  ('00000000-0000-4000-8000-000000000004', 'ATTR-OLD', 'qa_completed', '2026-01-05', '2026-01-05', '{"test_cases":[{"status":"pass"}]}'),
+  -- no completion date: items keep their own dates (Sep 9 / Sep 10)
+  ('00000000-0000-4000-8000-000000000004', 'ATTR-NODATE', 'in_progress', null, null,
+   '{"test_cases":[{"status":"pass","executed_on":"2026-09-09"}],"bugs":[{"severity":"critical","found_on":"2026-09-10"}]}');
+
 insert into storage.objects (bucket_id, name) values
   ('qa-reports', '00000000-0000-4000-8000-000000000001/d1/draft.pdf'),
   ('qa-reports', '00000000-0000-4000-8000-000000000001/other/unlinked.pdf'),
@@ -54,11 +74,11 @@ select is((select public_slug from public.profiles where id = '00000000-0000-400
 
 -- Anonymous manager: sees every QA, strictly read-only ------------------------
 set local role anon;
-select is((select count(*)::int from public.profiles), 3, 'manager sees every QA');
+select is((select count(*)::int from public.profiles), 4, 'manager sees every QA');
 select is((select count(*)::int from public.profiles where id = '00000000-0000-4000-8000-000000000002'), 1,
   'is_public = false does NOT hide a QA from the manager');
 select throws_ok($$ select email from public.profiles $$, '42501', null, 'manager cannot read emails');
-select is((select count(*)::int from public.qa_records), 10, 'manager sees tickets of every QA');
+select is((select count(*)::int from public.qa_records), 15, 'manager sees tickets of every QA');
 select is((select count(*)::int from public.qa_records where ticket_number = 'CHG-SECOND'), 1, 'tickets of an is_public=false QA are visible');
 select is((select count(*)::int from public.qa_documents where id = '00000000-0000-4000-9000-000000000001'), 0, 'manager cannot see unconfirmed documents');
 select is((select count(*)::int from public.qa_documents where id = '00000000-0000-4000-9000-000000000002'), 1, 'manager sees confirmed reports of every QA');
@@ -83,7 +103,8 @@ select is(
   (select test_cases_executed from public.qa_metrics_for_range(null, current_date - 30, current_date)),
   (select test_cases_executed from public.qa_metrics_for_range('00000000-0000-4000-8000-000000000001', current_date - 30, current_date))
   + (select test_cases_executed from public.qa_metrics_for_range('00000000-0000-4000-8000-000000000002', current_date - 30, current_date))
-  + (select test_cases_executed from public.qa_metrics_for_range('00000000-0000-4000-8000-000000000003', current_date - 30, current_date)),
+  + (select test_cases_executed from public.qa_metrics_for_range('00000000-0000-4000-8000-000000000003', current_date - 30, current_date))
+  + (select test_cases_executed from public.qa_metrics_for_range('00000000-0000-4000-8000-000000000004', current_date - 30, current_date)),
   'All QAs metrics equal the sum across every QA');
 
 -- Calendar weeks (manager, fixed "today" = Friday 2026-09-25) --------------------
@@ -122,8 +143,43 @@ select is(
   (select sum(test_cases_executed)::int from public.qa_metrics_by_week(null, 4, '2026-09-25')),
   (select sum(test_cases_executed)::int from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000001', 4, '2026-09-25'))
   + (select sum(test_cases_executed)::int from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000002', 4, '2026-09-25'))
-  + (select sum(test_cases_executed)::int from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000003', 4, '2026-09-25')),
+  + (select sum(test_cases_executed)::int from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000003', 4, '2026-09-25'))
+  + (select sum(test_cases_executed)::int from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 4, '2026-09-25')),
   'weekly All QAs buckets equal the sum of every QA');
+
+-- Completion-date attribution (manager, "today" = Friday 2026-09-25) ------------
+select is((select bugs_total from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 4, '2026-09-25') where week_start = '2026-09-14'), 3, 'A. bugs found Sep 11 on a ticket completed Sep 15 count in Sep 14-18');
+select is((select bugs_total - bugs_critical from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 4, '2026-09-25') where week_start = '2026-09-07'), 0,
+  'A. ...and not in Sep 7-11, the week of their found date (only the undated-completion ticket''s critical bug is there)');
+select is((select bugs_high from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 4, '2026-09-25') where week_start = '2026-09-14') || '/' || (select bugs_medium from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 4, '2026-09-25') where week_start = '2026-09-14') || '/' || (select bugs_low from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 4, '2026-09-25') where week_start = '2026-09-14'), '1/1/1', 'A. severities follow the completion week too');
+select is((select test_cases_executed from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 4, '2026-09-25') where week_start = '2026-09-14') || '/' || (select test_cases_passed from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 4, '2026-09-25') where week_start = '2026-09-14') || '/' || (select test_cases_failed from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 4, '2026-09-25') where week_start = '2026-09-14'), '2/1/1', 'B. tests executed Sep 4 and Sep 28 count in the completion week (Sep 14-18)');
+select is((select test_cases_executed from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 4, '2026-09-25') where week_start = '2026-08-31') + (select test_cases_executed from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 4, '2026-09-25') where week_start = '2026-09-21'), 0, 'B. no test cases leak into their own execution weeks');
+select is((select retests_total from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 4, '2026-09-25') where week_start = '2026-09-14') || '/' || (select retests_passed from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 4, '2026-09-25') where week_start = '2026-09-14') || '/' || (select retests_failed from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 4, '2026-09-25') where week_start = '2026-09-14'), '2/1/1', 'C. retests dated Sep 8 and Sep 23 count in the completion week (Sep 14-18)');
+select is((select retests_total from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 4, '2026-09-25') where week_start = '2026-09-07') + (select retests_total from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 4, '2026-09-25') where week_start = '2026-09-21'), 0, 'C. no retests leak into their own dated weeks');
+select is((select tickets_completed from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 4, '2026-09-25') where week_start = '2026-09-14'), 3, 'completed tickets count in their completion week');
+select is((select tickets_assigned from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 4, '2026-09-25') where week_start = '2026-09-07'), 1, 'tickets assigned still count by assigned date (Fri Sep 11)');
+select is((select test_cases_executed from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 4, '2026-09-25') where week_start = '2026-09-07') || '/' || (select bugs_total from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 4, '2026-09-25') where week_start = '2026-09-07'), '1/1', 'I. ticket without completion date keeps item dates (Sep 9 test, Sep 10 bug)');
+select is((select sum(tickets_completed)::int from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 4, '2026-09-25') where week_start = '2026-09-07'), 0,
+  'I. ticket without completion date is not counted as completed');
+
+-- Lifetime (manager) --------------------------------------------------------------
+select is((select tickets_completed || '/' || test_cases_executed || '/' || bugs_total || '/' || retests_total from public.qa_metrics_lifetime('00000000-0000-4000-8000-000000000004')),
+  '4/4/4/2', 'F/H. individual QA Lifetime = all of that QA''s history (incl. Jan 5 and the undated-completion ticket)');
+select is((select sum(test_cases_executed)::int from (select * from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000004', 24, '2026-09-25') offset 12) w), 3,
+  'F. a 12-week period does not reach the Jan 5 ticket');
+select is((select test_cases_executed from public.qa_metrics_lifetime('00000000-0000-4000-8000-000000000004')), 4, 'F. Lifetime includes data older than 12 weeks');
+select is((select count(*)::int || ' ' || min(week_start)::text || '..' || max(week_end)::text from public.qa_metrics_lifetime_weeks('00000000-0000-4000-8000-000000000004', '2026-09-25')),
+  '38 2026-01-05..2026-09-25', 'Lifetime trend: Monday-Friday weeks from the first week with data to the current week');
+select is((select count(*)::int from public.qa_metrics_lifetime_weeks('00000000-0000-4000-8000-000000000004', '2026-09-25')
+           where extract(isodow from week_start) = 1 and extract(isodow from week_end) = 5), 38, 'Lifetime buckets are complete Monday-Friday weeks');
+select is((select sum(bugs_total)::int from public.qa_metrics_lifetime_weeks('00000000-0000-4000-8000-000000000004', '2026-09-25')), 4, 'Lifetime weekly buckets add up to the Lifetime totals (weekday data)');
+select is(
+  (select test_cases_executed from public.qa_metrics_lifetime(null)),
+  (select test_cases_executed from public.qa_metrics_lifetime('00000000-0000-4000-8000-000000000001'))
+  + (select test_cases_executed from public.qa_metrics_lifetime('00000000-0000-4000-8000-000000000002'))
+  + (select test_cases_executed from public.qa_metrics_lifetime('00000000-0000-4000-8000-000000000003'))
+  + (select test_cases_executed from public.qa_metrics_lifetime('00000000-0000-4000-8000-000000000004')),
+  'H. All QAs Lifetime equals the sum across every QA');
 select is((select reporting_period_weeks from public.profiles where id = '00000000-0000-4000-8000-000000000003'), 2,
   'manager can read the weeks setting (default 2)');
 reset role;
@@ -142,6 +198,11 @@ select is(
 select lives_ok($$ update public.qa_records set title = title || '' where ticket_number = 'CHG0045893' $$, 'QA can update own ticket');
 select is((select count(*)::int from public.qa_metrics_by_week('00000000-0000-4000-8000-000000000003', 4, '2026-09-25') where test_cases_executed > 0), 0,
   'QA weekly metrics never include another QA''s rows');
+select is((select test_cases_executed || '/' || bugs_total from public.qa_metrics_lifetime('00000000-0000-4000-8000-000000000004')), '0/0', 'G. QA Lifetime never includes another QA''s data');
+select is(
+  (select test_cases_executed || '/' || bugs_total || '/' || tickets_completed from public.qa_metrics_lifetime(null)),
+  (select test_cases_executed || '/' || bugs_total || '/' || tickets_completed from public.qa_metrics_lifetime('00000000-0000-4000-8000-000000000001')),
+  'G. QA Lifetime (all visible) equals own data only');
 select lives_ok($$ update public.profiles set reporting_period_weeks = 4 where id = '00000000-0000-4000-8000-000000000001' $$, 'QA can set own reporting weeks');
 select throws_ok($$ update public.profiles set reporting_period_weeks = 13 where id = '00000000-0000-4000-8000-000000000001' $$,
   '23514', null, 'reporting weeks limited to 1-12');
