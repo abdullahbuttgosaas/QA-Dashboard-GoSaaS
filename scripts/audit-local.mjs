@@ -426,6 +426,46 @@ const draftPath = `${OWNER_ID}/${docId}/audit-report.txt`;
 }
 
 // ---------------------------------------------------------------------------
+// 6b. Loading states (UI only): each route streams its own skeleton first; progress bar and selectors intact
+// ---------------------------------------------------------------------------
+{
+  const cookie = await cookieHeader(qaSession);
+  const anyTicket = (await admin.from("qa_records").select("id").eq("ticket_number", "AUDIT-2").single()).data.id;
+  const skeletons = (html) => [...new Set([...html.matchAll(/data-skeleton="([a-z-]+)"/g)].map((m) => m[1]))].sort().join(",");
+  const expectSkeleton = [
+    ["/manager", null, "dashboard"],
+    ["/manager/tickets", null, "ticket-list"],
+    [`/manager/tickets/${anyTicket}`, null, "ticket-detail"],
+    ["/qa", cookie, "dashboard"],
+    ["/qa/tickets", cookie, "ticket-list"],
+    [`/qa/tickets/${anyTicket}`, cookie, "ticket-detail"],
+    ["/qa/tickets/new", cookie, "form"],
+    ["/qa/upload", cookie, "form"],
+    ["/qa/settings", cookie, "form"],
+  ];
+  for (const [path, c, kind] of expectSkeleton) {
+    const res = await get(path, c ?? undefined);
+    const html = await res.text();
+    // Exactly its own skeleton (no parent route's skeleton flashing first), and the real content after it.
+    check("loading", `${path.replace(anyTicket, "[id]")} streams only the ${kind} skeleton`, res.status === 200 && skeletons(html) === kind, skeletons(html));
+  }
+  // Routes that call notFound() have no route-level loading.tsx, so their 404s stay real HTTP 404s (not streamed soft 404s).
+  const other = (await admin.from("qa_records").select("id").neq("owner_id", OWNER_ID).limit(1).single()).data.id;
+  const missing = "00000000-0000-4000-8000-000000000000";
+  check("loading", "missing manager ticket is still a real 404", (await get(`/manager/tickets/${missing}`)).status === 404);
+  check("loading", "another QA's ticket edit page is still a real 404", (await get(`/qa/tickets/${other}/edit`, cookie)).status === 404);
+  check("loading", "unknown review document is still a real 404", (await get(`/qa/review/${missing}`, cookie)).status === 404);
+  check("loading", "edit page renders without a route skeleton", skeletons(await (await get(`/qa/tickets/${anyTicket}/edit`, cookie)).text()) === "");
+  const mgr = await (await get("/manager")).text();
+  check("loading", "navigation progress bar is rendered idle and non-blocking", /data-navigation-progress="idle"/.test(mgr) && /role="progressbar"[^>]*pointer-events-none|pointer-events-none[^>]*data-navigation-progress/.test(mgr));
+  check("loading", "manager QA and Period selectors intact (GET form fallback kept)", /id="qa-selector"/.test(mgr) && /id="period-selector"/.test(mgr) && (mgr.match(/<form [^>]*method="get"/g) ?? []).length >= 2);
+  check("loading", "manager stale-content region present (idle)", /data-pending-region="false"/.test(mgr));
+  const qaHome = await (await get("/qa", cookie)).text();
+  check("loading", "QA dashboard still has no Period selector", !/id="period-selector"/.test(qaHome) && !/name="period"/.test(qaHome));
+  check("loading", "sign out is still a POST form to /auth/signout", /<form action="\/auth\/signout" method="post"/.test(qaHome) && />Sign out</.test(qaHome));
+}
+
+// ---------------------------------------------------------------------------
 // 7. Ticket detail: QA report actions and long evidence text (manager + QA)
 // ---------------------------------------------------------------------------
 {

@@ -23,6 +23,7 @@ export default async function EditTicketPage({ params }: PageProps<"/qa/tickets/
       <RecordEditor
         initial={toRecordInput(record)}
         submitLabel="Save changes"
+        pendingLabel="Saving…"
         onSubmit={saveTicket.bind(null, record.id)}
         cancelHref={`/qa/tickets/${record.id}`}
       />

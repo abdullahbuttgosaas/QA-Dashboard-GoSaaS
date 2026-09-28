@@ -1,34 +1,43 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { discardDocument } from "@/app/actions/documents";
 import { buttonClass } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 
 export function RetryExtractionButton({ documentId, label = "Retry extraction" }: { documentId: string; label?: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const inFlight = useRef(false);
   return (
     <span className="inline-flex items-center gap-2">
-      <button
+      <LoadingButton
         type="button"
-        disabled={pending}
+        pending={pending}
+        pendingLabel="Extracting…"
         className={buttonClass("secondary", "sm")}
-        onClick={() =>
+        onClick={() => {
+          if (inFlight.current) return;
+          inFlight.current = true;
           start(async () => {
-            setError(null);
-            const res = await fetch(`/api/documents/${documentId}/extract`, { method: "POST" });
-            if (!res.ok) {
-              const body = (await res.json().catch(() => null)) as { error?: string } | null;
-              setError(body?.error ?? "Extraction failed.");
+            try {
+              setError(null);
+              const res = await fetch(`/api/documents/${documentId}/extract`, { method: "POST" });
+              if (!res.ok) {
+                const body = (await res.json().catch(() => null)) as { error?: string } | null;
+                setError(body?.error ?? "Extraction failed.");
+              }
+              router.refresh();
+            } finally {
+              inFlight.current = false;
             }
-            router.refresh();
-          })
-        }
+          });
+        }}
       >
-        {pending ? "Extracting…" : label}
-      </button>
+        {label}
+      </LoadingButton>
       {error && <span className="text-xs text-bad">{error}</span>}
     </span>
   );
@@ -37,23 +46,31 @@ export function RetryExtractionButton({ documentId, label = "Retry extraction" }
 export function DiscardDocumentButton({ documentId, redirectTo }: { documentId: string; redirectTo?: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const inFlight = useRef(false);
   return (
-    <button
+    <LoadingButton
       type="button"
-      disabled={pending}
+      pending={pending}
+      pendingLabel="Discarding…"
       className={buttonClass("ghost", "sm", "text-bad")}
       onClick={() => {
+        if (inFlight.current) return;
         if (!confirm("Discard this upload? The file will be deleted and nothing will be saved.")) return;
+        inFlight.current = true;
         start(async () => {
-          const res = await discardDocument(documentId);
-          if (!res.ok) return alert(res.error);
-          if (redirectTo) router.push(redirectTo);
-          else router.refresh();
+          try {
+            const res = await discardDocument(documentId);
+            if (!res.ok) return alert(res.error);
+            if (redirectTo) router.push(redirectTo);
+            else router.refresh();
+          } finally {
+            inFlight.current = false;
+          }
         });
       }}
     >
-      {pending ? "Discarding…" : "Discard"}
-    </button>
+      Discard
+    </LoadingButton>
   );
 }
 

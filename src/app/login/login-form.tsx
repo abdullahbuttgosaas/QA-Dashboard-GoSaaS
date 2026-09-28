@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { signIn, signUp, type AuthFormState } from "./actions";
 import { buttonClass } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth/password-errors";
 
 const input = "h-10 w-full rounded-md border border-line-strong bg-surface px-3 text-sm text-ink";
@@ -45,9 +46,9 @@ export function SignInForm({ next, domain }: { next?: string; domain: string }) 
         <span className="mb-1 block text-sm font-medium text-ink">Password</span>
         <input name="password" type="password" autoComplete="current-password" required className={input} />
       </label>
-      <button type="submit" disabled={pending} className={buttonClass("primary", "md", "h-10 w-full")}>
-        {pending ? "Signing in…" : "Sign in"}
-      </button>
+      <LoadingButton type="submit" pending={pending} pendingLabel="Signing in…" className={buttonClass("primary", "md", "h-10 w-full")}>
+        Sign in
+      </LoadingButton>
       <p className="text-center text-sm text-ink-muted">
         New QA team member?{" "}
         <Link href="/login?mode=signup" className="text-accent hover:underline">
@@ -73,9 +74,9 @@ export function SignUpForm({ domain }: { domain: string }) {
         <span className="mb-1 block text-sm font-medium text-ink">Confirm password</span>
         <input name="confirm" type="password" autoComplete="new-password" minLength={MIN_PASSWORD_LENGTH} required className={input} />
       </label>
-      <button type="submit" disabled={pending} className={buttonClass("primary", "md", "h-10 w-full")}>
-        {pending ? "Creating account…" : "Create account"}
-      </button>
+      <LoadingButton type="submit" pending={pending} pendingLabel="Creating account…" className={buttonClass("primary", "md", "h-10 w-full")}>
+        Create account
+      </LoadingButton>
       <p className="text-center text-sm text-ink-muted">
         Already have an account?{" "}
         <Link href="/login" className="text-accent hover:underline">

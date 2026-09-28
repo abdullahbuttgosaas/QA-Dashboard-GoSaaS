@@ -7,6 +7,7 @@ import { toTicketRows } from "@/services/tickets-view";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { PeriodSelector } from "@/components/dashboard/period-selector";
 import { QaSelector } from "@/components/manager/qa-selector";
+import { PendingNavigationProvider } from "@/components/navigation/pending-navigation";
 
 export const metadata: Metadata = { title: "Manager dashboard" };
 
@@ -25,23 +26,25 @@ export default async function ManagerDashboardPage({ searchParams }: PageProps<"
   ]);
 
   return (
-    <DashboardView
-      title={scope.selected ? `QA summary · ${scope.selected.display_name}` : "QA summary · All QAs"}
-      weeks={weeks}
-      mode={mode}
-      lifetimeTotals={lifetimeTotals}
-      back={back}
-      basePath="/manager"
-      ticketsPath="/manager/tickets"
-      params={{ ...scope.params, ...periodParam }}
-      rows={toTicketRows(tickets, scope.ownerNames)}
-      showOwner={!scope.selected}
-      toolbar={
-        <>
-          <QaSelector qas={scope.qas} selected={scope.selected?.public_slug ?? null} keep={periodParam} />
-          <PeriodSelector value={periodValue(mode)} defaultWeeks={defaultWeeks} keep={scope.params} />
-        </>
-      }
-    />
+    <PendingNavigationProvider>
+      <DashboardView
+        title={scope.selected ? `QA summary · ${scope.selected.display_name}` : "QA summary · All QAs"}
+        weeks={weeks}
+        mode={mode}
+        lifetimeTotals={lifetimeTotals}
+        back={back}
+        basePath="/manager"
+        ticketsPath="/manager/tickets"
+        params={{ ...scope.params, ...periodParam }}
+        rows={toTicketRows(tickets, scope.ownerNames)}
+        showOwner={!scope.selected}
+        toolbar={
+          <>
+            <QaSelector qas={scope.qas} selected={scope.selected?.public_slug ?? null} keep={periodParam} />
+            <PeriodSelector value={periodValue(mode)} defaultWeeks={defaultWeeks} keep={scope.params} />
+          </>
+        }
+      />
+    </PendingNavigationProvider>
   );
 }

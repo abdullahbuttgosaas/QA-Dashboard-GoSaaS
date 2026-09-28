@@ -17,7 +17,7 @@ export default async function NewTicketPage() {
         <h1 className="text-xl font-semibold text-ink">New ticket</h1>
         <p className="text-sm text-ink-muted">Enter QA information manually. To extract it from a report instead, use Upload QA report.</p>
       </div>
-      <RecordEditor initial={{ ...initial, ticket_number: "" }} submitLabel="Create ticket" onSubmit={saveTicket.bind(null, null)} cancelHref="/qa/tickets" />
+      <RecordEditor initial={{ ...initial, ticket_number: "" }} submitLabel="Create ticket" pendingLabel="Creating…" onSubmit={saveTicket.bind(null, null)} cancelHref="/qa/tickets" />
     </div>
   );
 }

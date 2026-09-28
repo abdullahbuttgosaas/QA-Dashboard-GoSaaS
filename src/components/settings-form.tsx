@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { updateSettings } from "@/app/actions/profile";
 import { buttonClass } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
 import { Label } from "@/components/tickets/editor/fields";
 import { MAX_REPORTING_WEEKS } from "@/lib/reporting";
 import type { PublicProfile } from "@/services/profiles";
@@ -14,7 +15,7 @@ export function SettingsForm({ profile, siteUrl, saved }: { profile: PublicProfi
   const errors = state && !state.ok ? (state.fieldErrors ?? {}) : {};
 
   return (
-    <form action={action} className="space-y-6">
+    <form action={action} aria-busy={pending || undefined} className="space-y-6">
       {state && !state.ok && (
         <div role="alert" className="rounded-md border border-bad/30 bg-bad-soft px-4 py-3 text-sm text-bad">
           {state.error}
@@ -71,9 +72,9 @@ export function SettingsForm({ profile, siteUrl, saved }: { profile: PublicProfi
       </fieldset>
 
       <div className="flex justify-end">
-        <button type="submit" disabled={pending} className={buttonClass("primary")}>
-          {pending ? "Saving…" : "Save settings"}
-        </button>
+        <LoadingButton type="submit" pending={pending} pendingLabel="Saving…" className={buttonClass("primary")}>
+          Save settings
+        </LoadingButton>
       </div>
     </form>
   );

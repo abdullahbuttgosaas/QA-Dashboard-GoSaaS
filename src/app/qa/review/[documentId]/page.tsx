@@ -76,6 +76,7 @@ export default async function ReviewPage({ params }: PageProps<"/qa/review/[docu
         initial={draft.record}
         notes={failed ? [] : draft.notes}
         submitLabel="Confirm and save"
+        pendingLabel="Confirming…"
         onSubmit={confirmExtraction.bind(null, doc.id)}
         cancelHref="/qa/upload"
         banner={

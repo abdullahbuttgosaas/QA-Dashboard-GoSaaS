@@ -18,6 +18,7 @@ import { TrendChart, type TrendPeriod } from "@/components/dashboard/trend-chart
 import { TicketTable, type TicketRow } from "@/components/tickets/ticket-table";
 import { Card, CardHeader } from "@/components/ui/card";
 import { buttonClass } from "@/components/ui/button";
+import { PendingRegion } from "@/components/navigation/pending-navigation";
 import { formatPercent, formatRange, formatShortDate } from "@/lib/format";
 
 type Props = {
@@ -115,6 +116,9 @@ export function DashboardView({ title, weeks, mode, lifetimeTotals, back, basePa
         </div>
       </div>
 
+      {/* Dimmed and inert while a manager filter change is loading (no-op on the QA dashboard). */}
+      <PendingRegion>
+      <div className="space-y-6">
       <section aria-labelledby="activity-heading">
         <h2 id="activity-heading" className="mb-2 text-xs font-semibold tracking-wide text-ink-muted uppercase">
           QA activity
@@ -248,6 +252,8 @@ export function DashboardView({ title, weeks, mode, lifetimeTotals, back, basePa
         />
         <TicketTable rows={rows.slice(0, 8)} hrefBase={ticketsPath} linkQuery={query} showOwner={showOwner} filterable={false} />
       </Card>
+      </div>
+      </PendingRegion>
     </div>
   );
 }

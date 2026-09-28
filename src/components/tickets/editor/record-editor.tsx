@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { buttonClass } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
+import { cn } from "@/lib/cn";
 import { OutcomeBadge, SeverityBadge } from "@/components/ui/badges";
 import { formatPercent } from "@/lib/format";
 import {
@@ -26,6 +28,7 @@ type ActionResult = { ok: false; error: string; fieldErrors?: Record<string, str
 type Props = {
   initial: QaRecordInput;
   submitLabel: string;
+  pendingLabel?: string; // e.g. "Creating…", "Confirming…"
   onSubmit: (payload: QaRecordInput) => Promise<ActionResult>;
   cancelHref: string;
   notes?: string[];
@@ -95,7 +98,7 @@ function finalize(record: QaRecordInput, customFields: Array<{ key: string; valu
   };
 }
 
-export function RecordEditor({ initial, submitLabel, onSubmit, cancelHref, notes = [], banner }: Props) {
+export function RecordEditor({ initial, submitLabel, pendingLabel = "Saving…", onSubmit, cancelHref, notes = [], banner }: Props) {
   const [record, setRecord] = useState<QaRecordInput>(initial);
   const [customFields, setCustomFields] = useState(() =>
     Object.entries(initial.data.custom_fields).map(([key, value]) => ({ key, value })),
@@ -103,6 +106,8 @@ export function RecordEditor({ initial, submitLabel, onSubmit, cancelHref, notes
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [pending, startTransition] = useTransition();
+  // Blocks a second submit (double click / Enter) before React has re-rendered the disabled button.
+  const inFlight = useRef(false);
 
   const set = (patch: Partial<QaRecordInput>) => setRecord((r) => ({ ...r, ...patch }));
   const setData = (patch: Partial<QaRecordInput["data"]>) => setRecord((r) => ({ ...r, data: { ...r.data, ...patch } }));
@@ -122,10 +127,17 @@ export function RecordEditor({ initial, submitLabel, onSubmit, cancelHref, notes
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (inFlight.current) return;
+    inFlight.current = true;
     setError(null);
     setFieldErrors({});
     startTransition(async () => {
-      const result = await onSubmit(finalize(record, customFields));
+      let result: ActionResult;
+      try {
+        result = await onSubmit(finalize(record, customFields));
+      } finally {
+        inFlight.current = false;
+      }
       if (result && !result.ok) {
         setError(result.error);
         setFieldErrors(result.fieldErrors ?? {});
@@ -135,7 +147,7 @@ export function RecordEditor({ initial, submitLabel, onSubmit, cancelHref, notes
   }
 
   return (
-    <form onSubmit={submit} className="space-y-5">
+    <form onSubmit={submit} aria-busy={pending || undefined} className="space-y-5">
       {banner}
       {error && (
         <div role="alert" className="rounded-md border border-bad/30 bg-bad-soft px-4 py-3 text-sm text-bad">
@@ -400,12 +412,17 @@ export function RecordEditor({ initial, submitLabel, onSubmit, cancelHref, notes
       />
 
       <div className="sticky bottom-0 -mx-4 flex items-center justify-end gap-2 border-t border-line bg-page/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
-        <Link href={cancelHref} className={buttonClass("ghost")}>
+        <Link
+          href={cancelHref}
+          aria-disabled={pending || undefined}
+          tabIndex={pending ? -1 : undefined}
+          className={buttonClass("ghost", undefined, cn(pending && "pointer-events-none opacity-50"))}
+        >
           Cancel
         </Link>
-        <button type="submit" disabled={pending} className={buttonClass("primary")}>
-          {pending ? "Saving…" : submitLabel}
-        </button>
+        <LoadingButton type="submit" pending={pending} pendingLabel={pendingLabel} className={buttonClass("primary")}>
+          {submitLabel}
+        </LoadingButton>
       </div>
     </form>
   );

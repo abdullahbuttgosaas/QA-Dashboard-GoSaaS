@@ -5,17 +5,57 @@ import { useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { registerDocument } from "@/app/actions/documents";
 import { buttonClass } from "@/components/ui/button";
+import { LoadingButton } from "@/components/ui/loading-button";
+import { Spinner } from "@/components/ui/spinner";
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
-type Stage = "idle" | "uploading" | "extracting" | "error";
+type Stage = "idle" | "uploading" | "extracting" | "preparing" | "error";
+type BusyStage = "uploading" | "extracting" | "preparing";
 
 const STAGE_TEXT: Record<Stage, string> = {
   idle: "",
   uploading: "Uploading report…",
   extracting: "Reading the report with AI. This can take up to a minute…",
+  preparing: "Preparing the review screen…",
   error: "",
 };
+
+// Step indicator + button labels, in order. The button reserves the width of the longest label.
+export const UPLOAD_STEPS: Array<{ stage: BusyStage; step: string; button: string }> = [
+  { stage: "uploading", step: "Upload", button: "Uploading…" },
+  { stage: "extracting", step: "Extract", button: "Extracting…" },
+  { stage: "preparing", step: "Prepare review", button: "Preparing review…" },
+];
+
+function UploadSteps({ stage }: { stage: BusyStage }) {
+  const current = UPLOAD_STEPS.findIndex((s) => s.stage === stage);
+  return (
+    <ol className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs" aria-label="Upload progress" data-upload-steps>
+      {UPLOAD_STEPS.map((s, i) => {
+        const state = i < current ? "done" : i === current ? "current" : "todo";
+        return (
+          <li
+            key={s.stage}
+            data-step-state={state}
+            aria-current={state === "current" ? "step" : undefined}
+            className={cn(
+              "inline-flex items-center gap-1.5",
+              state === "done" && "text-good",
+              state === "current" && "font-medium text-ink",
+              state === "todo" && "text-ink-muted",
+            )}
+          >
+            <span className="inline-flex size-3.5 items-center justify-center" aria-hidden>
+              {state === "current" ? <Spinner /> : state === "done" ? "✓" : "○"}
+            </span>
+            {s.step}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
 
 // Uploads directly from the browser to Supabase Storage (avoids serverless body limits),
 // registers the document, then triggers AI extraction and opens the review screen.
@@ -34,7 +74,9 @@ export function UploadForm({
   const [stage, setStage] = useState<Stage>("idle");
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  const busy = stage === "uploading" || stage === "extracting";
+  const busy = stage === "uploading" || stage === "extracting" || stage === "preparing";
+  // Guards against a second upload (double click) before React re-renders the disabled button.
+  const inFlight = useRef(false);
 
   function pick(f: File | undefined) {
     setError(null);
@@ -46,7 +88,8 @@ export function UploadForm({
   }
 
   async function submit() {
-    if (!file) return;
+    if (!file || inFlight.current) return;
+    inFlight.current = true;
     setError(null);
     setStage("uploading");
     const supabase = createClient();
@@ -59,6 +102,7 @@ export function UploadForm({
       .from("qa-reports")
       .upload(storagePath, file, { contentType: mimeType, upsert: false });
     if (upErr) {
+      inFlight.current = false;
       setStage("error");
       return setError(`Upload failed: ${upErr.message}`);
     }
@@ -66,6 +110,7 @@ export function UploadForm({
     const reg = await registerDocument({ id, storagePath, fileName: file.name, mimeType, size: file.size });
     if (!reg.ok) {
       await supabase.storage.from("qa-reports").remove([storagePath]);
+      inFlight.current = false;
       setStage("error");
       return setError(reg.error);
     }
@@ -73,6 +118,8 @@ export function UploadForm({
     setStage("extracting");
     // Even if extraction fails, the review screen lets the user retry or fill in manually.
     await fetch(`/api/documents/${id}/extract`, { method: "POST" }).catch(() => null);
+    // Stays in this state (inputs disabled) until the review page replaces this one.
+    setStage("preparing");
     router.push(`/qa/review/${id}`);
   }
 
@@ -117,13 +164,22 @@ export function UploadForm({
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-ink-muted" aria-live="polite">
-          {STAGE_TEXT[stage]}
-        </p>
-        <button type="button" disabled={!file || busy} onClick={submit} className={buttonClass("primary")}>
-          {busy ? "Processing…" : "Upload and extract"}
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 space-y-1.5" aria-live="polite">
+          {busy && <UploadSteps stage={stage} />}
+          <p className="text-sm text-ink-muted">{STAGE_TEXT[stage]}</p>
+        </div>
+        <LoadingButton
+          type="button"
+          disabled={!file}
+          pending={busy}
+          pendingLabel={UPLOAD_STEPS.find((s) => s.stage === stage)?.button ?? "Uploading…"}
+          reserveLabels={UPLOAD_STEPS.map((s) => s.button)}
+          onClick={submit}
+          className={buttonClass("primary", "md", "ml-auto")}
+        >
+          Upload and extract
+        </LoadingButton>
       </div>
     </div>
   );

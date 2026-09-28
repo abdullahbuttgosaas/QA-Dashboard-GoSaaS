@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AppHeader } from "@/components/app-header";
 import { buttonClass } from "@/components/ui/button";
 import { requireQa } from "@/services/profiles";
+import { SignOutButton } from "@/components/sign-out-button";
 
 // QA working experience: requires a signed-in @gosaas.ai user. Write permissions are still enforced by
 // server actions and RLS; this layout only decides who sees the working interface.
@@ -25,9 +26,7 @@ export default async function QaLayout({ children }: LayoutProps<"/qa">) {
             <Link href="/qa/settings" className={buttonClass("ghost", "sm")}>
               Settings
             </Link>
-            <form action="/auth/signout" method="post">
-              <button className={buttonClass("ghost", "sm")}>Sign out</button>
-            </form>
+            <SignOutButton />
           </>
         }
       />
