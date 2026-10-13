@@ -11,16 +11,21 @@ const INLINE_LIMIT_BYTES = 18 * 1024 * 1024;
 const ATTEMPT_TIMEOUT_MS = 100_000;
 // Stay under the route's maxDuration (300s) including download/preparation time.
 const TOTAL_BUDGET_MS = 250_000;
-// Gemini returns 429/5xx under load ("model experiencing high demand"); these are usually transient.
-const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
-const RETRY_DELAYS_MS = [2_000, 5_000];
+// Gemini returns 5xx under load ("model experiencing high demand"); usually transient, so the primary model gets one
+// short retry. Other models get a single attempt each: under a demand spike, moving on beats waiting on the same model.
+const RETRYABLE_STATUS = new Set([500, 502, 503, 504]);
+const PRIMARY_RETRY_DELAYS_MS = [2_000];
 
 type Failure = "retry" | "next-model" | "fatal";
+
+const invalidKey = (err: ApiError) => err.status === 400 && /API[ _]?key/i.test(err.message);
 
 function classify(err: unknown): Failure {
   if (err instanceof ApiError) {
     if (RETRYABLE_STATUS.has(err.status)) return "retry";
-    if (err.status === 404) return "next-model"; // model retired or unavailable to this key
+    // 429 = this model's quota/rate limit (quotas are per model): retrying it right away does not help.
+    // 404 = model retired or unavailable to this key.
+    if (err.status === 429 || err.status === 404) return "next-model";
     return "fatal";
   }
   // Client-side timeout (AbortError) or network failure: the next model may respond.
@@ -37,6 +42,7 @@ function describeError(err: unknown): string {
     if (err.status === 429) return "The AI service rate limit was reached. Please try again in a minute.";
     if (err.status >= 500) return "The AI service is temporarily unavailable (high demand). Please retry shortly.";
     if (err.status === 404) return "The configured AI model is not available. Check GEMINI_MODEL.";
+    if (invalidKey(err)) return "The AI service rejected the API key. Check GEMINI_API_KEY.";
     if (err.status === 400) return "The AI service rejected the document. It may be too large or in an unsupported format.";
     if (err.status === 401 || err.status === 403) return "The AI service rejected the API key. Check GEMINI_API_KEY.";
     return `The AI service returned an error (HTTP ${err.status}).`;
@@ -48,8 +54,8 @@ function describeError(err: unknown): string {
 export class GeminiExtractionProvider implements ExtractionProvider {
   readonly name = "gemini";
   private readonly ai = new GoogleGenAI({ apiKey: serverEnv.geminiApiKey() });
-  // Primary model first, then the optional fallback; each attempt retried on transient errors.
-  private readonly models = [serverEnv.geminiModel(), serverEnv.geminiFallbackModel()].filter(
+  // Primary model, then the configured fallback, then the built-in backup (duplicates removed).
+  private readonly models = [serverEnv.geminiModel(), serverEnv.geminiFallbackModel(), serverEnv.geminiBackupModel()].filter(
     (m, i, all): m is string => !!m && all.indexOf(m) === i,
   );
 
@@ -58,8 +64,9 @@ export class GeminiExtractionProvider implements ExtractionProvider {
     const { parts, cleanup } = await this.toParts(document);
     try {
       let lastError: unknown = new Error("No AI model is configured.");
-      for (const model of this.models) {
-        for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+      for (const [index, model] of this.models.entries()) {
+        const retryDelays = index === 0 ? PRIMARY_RETRY_DELAYS_MS : [];
+        for (let attempt = 0; attempt <= retryDelays.length; attempt++) {
           const remaining = deadline - Date.now();
           if (remaining < 10_000) throw new Error(describeError(lastError));
           try {
@@ -67,9 +74,11 @@ export class GeminiExtractionProvider implements ExtractionProvider {
           } catch (err) {
             lastError = err;
             const kind = classify(err);
+            // Server-side diagnostics only (model + status, never the key or document); users see describeError().
+            console.warn(`[extraction] ${model} attempt ${attempt + 1} failed: ${err instanceof ApiError ? `HTTP ${err.status}` : (err as Error)?.name ?? "error"} (${kind})`);
             if (kind === "fatal") throw new Error(describeError(err));
-            if (kind === "next-model" || attempt === RETRY_DELAYS_MS.length) break;
-            await sleep(RETRY_DELAYS_MS[attempt]);
+            if (kind === "next-model" || attempt === retryDelays.length) break;
+            await sleep(retryDelays[attempt]);
           }
         }
       }

@@ -108,7 +108,7 @@ Environment variables (Project → Settings → Environment Variables):
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Publishable key (browser-safe) |
 | `GEMINI_API_KEY` | Server only |
 | `GEMINI_MODEL` | Optional, default `gemini-3.6-flash` |
-| `GEMINI_FALLBACK_MODEL` | Optional, default `gemini-3.5-flash-lite`; used when the primary is overloaded |
+| `GEMINI_FALLBACK_MODEL` | Optional, default `gemini-3.1-flash-lite`; used when the primary is overloaded. `gemini-3.1-flash-lite` is also always tried last as a built-in backup (`none` disables all fallbacks) |
 | `ALLOWED_EMAIL_DOMAIN` | `gosaas.ai` |
 | `NEXT_PUBLIC_SITE_URL` | Production URL |
 
