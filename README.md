@@ -1,4 +1,4 @@
-# Glaukos QA Performance & Solution Quality Dashboard
+# QA Performance & Solution Quality Dashboard
 
 Internal app that tracks **QA activity** (how much QA work was done) and **solution quality**
 (what QA found in the solutions under test), per reporting period and over time.

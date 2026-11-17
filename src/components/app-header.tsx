@@ -20,7 +20,7 @@ export function AppHeader({ homeHref, subtitle, links, preserveParams, actions }
             QA
           </span>
           <span className="leading-tight">
-            <span className="block text-sm font-semibold text-ink">Glaukos QA Dashboard</span>
+            <span className="block text-sm font-semibold text-ink">QA Dashboard</span>
             <span className="block text-xs text-ink-muted">{subtitle}</span>
           </span>
         </Link>

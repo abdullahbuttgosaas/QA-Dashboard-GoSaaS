@@ -20,7 +20,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           <span aria-hidden className="grid size-8 place-items-center rounded-md bg-accent text-xs font-bold text-white">
             QA
           </span>
-          <span className="text-base font-semibold text-ink">Glaukos QA Dashboard</span>
+          <span className="text-base font-semibold text-ink">QA Dashboard</span>
         </div>
         <div className="rounded-lg border border-line bg-surface p-6">
           <h1 className="text-lg font-semibold text-ink">{signup ? "Create QA account" : "QA sign in"}</h1>

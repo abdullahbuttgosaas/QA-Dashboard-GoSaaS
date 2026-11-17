@@ -1,5 +1,5 @@
 {
-  "name": "glaukos-qa-dashboard",
+  "name": "qa-dashboard",
   "version": "0.1.0",
   "private": true,
   "scripts": {

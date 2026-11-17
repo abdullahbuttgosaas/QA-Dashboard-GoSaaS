@@ -8,7 +8,7 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: { default: "Glaukos QA Dashboard", template: "%s · Glaukos QA" },
+  title: { default: "QA Dashboard", template: "%s · QA Dashboard" },
   description: "QA performance and solution quality tracking",
   robots: { index: false, follow: false },
 };
